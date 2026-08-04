@@ -128,12 +128,39 @@ function saveModal() {
     row[pt] = val;
   });
 
-  bom[model] = row;
-  saveBOM(bom);
-  closeModal();
-  renderBOM();
-  refreshPlanSelect();
-  toast((editingModel ? '已更新 ' : '已新增 ') + model, 'success');
+  const isEditing = Boolean(editingModel);
+
+bom[model] = row;
+saveBOM(bom);
+
+const pending = loadPending();
+const pendingItem = pending.find(item => item.model === model);
+
+if (pendingItem) {
+  const plan = loadPlan();
+  const existing = plan.find(item => item.model === model);
+
+  if (existing) {
+    existing.qty += pendingItem.qty;
+  } else {
+    plan.push({ model, qty: pendingItem.qty });
+  }
+
+  savePlan(plan);
+  savePending(pending.filter(item => item.model !== model));
+}
+
+closeModal();
+renderBOM();
+renderPlan();
+renderPending();
+refreshPlanSelect();
+
+if (pendingItem) {
+  toast(`已建立 ${model}，並加入生產計畫 ${pendingItem.qty} 台`, 'success');
+} else {
+  toast((isEditing ? '已更新 ' : '已新增 ') + model, 'success');
+}
 }
 
 // close on overlay click
