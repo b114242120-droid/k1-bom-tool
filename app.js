@@ -310,6 +310,147 @@ function esc(str) {
     .replace(/"/g,'&quot;');
 }
 
+// ===== EXCEL IMPORT =====
+async function importExcel() {
+  const fileInput = document.getElementById('excel-file');
+  const file = fileInput.files[0];
+
+  if (!file) {
+    toast('請先選擇 Excel 檔案', 'error');
+    return;
+  }
+
+  if (typeof XLSX === 'undefined') {
+    toast('Excel 讀取工具尚未載入', 'error');
+    return;
+  }
+
+  const oldPlan = loadPlan();
+
+  if (
+    oldPlan.length > 0 &&
+    !confirm('目前已有生產計畫，匯入後會清空並重新建立，是否繼續？')
+  ) {
+    return;
+  }
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+
+    const workbook = XLSX.read(arrayBuffer, {
+      type: 'array'
+    });
+
+    // 優先讀取「AE線」，沒有時讀取第一個工作表
+    const sheetName = workbook.SheetNames.includes('AE線')
+      ? 'AE線'
+      : workbook.SheetNames[0];
+
+    const worksheet = workbook.Sheets[sheetName];
+
+    const rows = XLSX.utils.sheet_to_json(worksheet, {
+      header: 1,
+      defval: null,
+      raw: true
+    });
+
+    const normalizeModel = value =>
+      String(value)
+        .trim()
+        .replace(/^\*+|\*+$/g, '')
+        .trim()
+        .toUpperCase();
+
+    const excelModels = {};
+
+    rows.forEach(row => {
+      const no = Number(row[1]);       // B 欄：NO
+      const rawModel = row[2];         // C 欄：機種
+      const qty = Number(row[5]);      // F 欄：台數
+
+      // 排除標題、合計、空白列
+      if (!Number.isFinite(no)) return;
+      if (!rawModel) return;
+      if (!Number.isFinite(qty) || qty <= 0) return;
+
+      const model = normalizeModel(rawModel);
+
+      if (!model) return;
+
+      // 同機種自動加總
+      excelModels[model] = (excelModels[model] || 0) + Math.trunc(qty);
+    });
+
+    const bom = loadBOM();
+
+    // 建立 BOM 機種比對表
+    const bomLookup = {};
+
+    Object.keys(bom).forEach(model => {
+      bomLookup[normalizeModel(model)] = model;
+    });
+
+    const newPlan = [];
+    const missingModels = [];
+
+    Object.entries(excelModels).forEach(([excelModel, qty]) => {
+      const bomModel = bomLookup[excelModel];
+
+      if (!bomModel) {
+        missingModels.push(excelModel);
+        return;
+      }
+
+      newPlan.push({
+        model: bomModel,
+        qty
+      });
+    });
+
+    if (newPlan.length === 0) {
+      toast('沒有找到已建立 BOM 的機種', 'error');
+
+      if (missingModels.length > 0) {
+        alert(
+          '以下機種尚未建立 BOM：\n\n' +
+          missingModels.slice(0, 30).join('\n')
+        );
+      }
+
+      return;
+    }
+
+    savePlan(newPlan);
+    renderPlan();
+    renderResult();
+
+    const totalQty = newPlan.reduce((sum, item) => sum + item.qty, 0);
+
+    toast(
+      `成功匯入 ${newPlan.length} 個機種，共 ${totalQty} 台`,
+      'success'
+    );
+
+    if (missingModels.length > 0) {
+      const extraText =
+        missingModels.length > 30
+          ? `\n\n另有 ${missingModels.length - 30} 個未顯示`
+          : '';
+
+      alert(
+        `已略過 ${missingModels.length} 個尚未建立 BOM 的機種：\n\n` +
+        missingModels.slice(0, 30).join('\n') +
+        extraText
+      );
+    }
+
+    fileInput.value = '';
+
+  } catch (error) {
+    console.error('Excel 匯入失敗：', error);
+    toast('Excel 讀取失敗，請確認檔案格式', 'error');
+  }
+}
 // ===== INIT =====
 renderBOM();
 renderPlan();
