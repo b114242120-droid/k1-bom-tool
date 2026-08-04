@@ -88,6 +88,22 @@
       <div class="form-card">
         <h3>➕ 新增生產項目</h3>
         <div class="form-group">
+  <label for="excel-file">匯入生產計畫 Excel</label>
+  <input
+    type="file"
+    id="excel-file"
+    accept=".xlsx,.xls"
+  >
+</div>
+
+<button
+  class="btn btn-success"
+  style="width:100%; margin-bottom:1rem"
+  onclick="importExcel()"
+>
+  📂 讀取 Excel
+</button>
+        <div class="form-group">
           <label for="plan-model-select">機種代號</label>
           <select id="plan-model-select">
             <option value="">-- 請先至 BOM 管理建立機種 --</option>
@@ -224,6 +240,7 @@
 <!-- ===== TOAST ===== -->
 <div id="toast-container" class="toast-container"></div>
 
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
