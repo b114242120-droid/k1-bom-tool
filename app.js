@@ -1,6 +1,7 @@
 // ===== CONSTANTS =====
 const BOM_KEY  = 'k1_bom_data';
 const PLAN_KEY = 'k1_production_plan';
+const PENDING_KEY = 'k1_pending_bom';
 
 const PART_TYPES = ['L CASE', 'R CASE', 'L COVER', 'R COVER', 'M CASE', 'UPPER CASE', 'BED CASE'];
 
@@ -19,6 +20,8 @@ function loadBOM()   { return JSON.parse(localStorage.getItem(BOM_KEY)  || '{}')
 function saveBOM(d)  { localStorage.setItem(BOM_KEY,  JSON.stringify(d)); }
 function loadPlan()  { return JSON.parse(localStorage.getItem(PLAN_KEY) || '[]'); }
 function savePlan(d) { localStorage.setItem(PLAN_KEY, JSON.stringify(d)); }
+function loadPending() { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');}
+function savePending(d) { localStorage.setItem(PENDING_KEY, JSON.stringify(d));}
 
 // ===== TAB =====
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -210,6 +213,33 @@ function renderPlan() {
   `).join('');
 }
 
+// ===== PENDING BOM =====
+function renderPending() {
+  const pending = loadPending();
+  const listEl = document.getElementById('pending-list');
+  const emptyEl = document.getElementById('pending-empty');
+  const countEl = document.getElementById('pending-count');
+
+  countEl.textContent = `${pending.length} 筆待處理`;
+
+  if (pending.length === 0) {
+    listEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+
+  listEl.innerHTML = pending.map(item => `
+    <div class="plan-item">
+      <div class="plan-item-info">
+        <span class="plan-item-model">${esc(item.model)}</span>
+        <span class="plan-item-qty">尚未建立 BOM</span>
+        <span class="qty-badge">${item.qty} 台</span>
+      </div>
+    </div>
+  `).join('');
+}
 // ===== RESULT TAB =====
 function calculate() {
   const bom  = loadBOM();
@@ -391,13 +421,13 @@ async function importExcel() {
     });
 
     const newPlan = [];
-    const missingModels = [];
+    const pendingModels = [];
 
     Object.entries(excelModels).forEach(([excelModel, qty]) => {
       const bomModel = bomLookup[excelModel];
 
       if (!bomModel) {
-        missingModels.push(excelModel);
+        pendingModels.push({model: excelModel,qty});
         return;
       }
 
@@ -407,6 +437,8 @@ async function importExcel() {
       });
     });
 
+    savePending(pendingModels);
+    renderPending();
     if (newPlan.length === 0) {
       toast('沒有找到已建立 BOM 的機種', 'error');
 
@@ -422,6 +454,7 @@ async function importExcel() {
 
     savePlan(newPlan);
     renderPlan();
+    renderPending();
     renderResult();
 
     const totalQty = newPlan.reduce((sum, item) => sum + item.qty, 0);
