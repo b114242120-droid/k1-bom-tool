@@ -1,6 +1,7 @@
 // ===== CONSTANTS =====
 const BOM_KEY  = 'k1_bom_data';
 const PLAN_KEY = 'k1_production_plan';
+const PENDING_KEY = 'k1_pending_bom';
 
 const PART_TYPES = ['L CASE', 'R CASE', 'L COVER', 'R COVER', 'M CASE', 'UPPER CASE', 'BED CASE'];
 
@@ -19,6 +20,8 @@ function loadBOM()   { return JSON.parse(localStorage.getItem(BOM_KEY)  || '{}')
 function saveBOM(d)  { localStorage.setItem(BOM_KEY,  JSON.stringify(d)); }
 function loadPlan()  { return JSON.parse(localStorage.getItem(PLAN_KEY) || '[]'); }
 function savePlan(d) { localStorage.setItem(PLAN_KEY, JSON.stringify(d)); }
+function loadPending() { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');}
+function savePending(d) { localStorage.setItem(PENDING_KEY, JSON.stringify(d));}
 
 // ===== TAB =====
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -125,12 +128,39 @@ function saveModal() {
     row[pt] = val;
   });
 
-  bom[model] = row;
-  saveBOM(bom);
-  closeModal();
-  renderBOM();
-  refreshPlanSelect();
-  toast((editingModel ? '已更新 ' : '已新增 ') + model, 'success');
+  const isEditing = Boolean(editingModel);
+
+bom[model] = row;
+saveBOM(bom);
+
+const pending = loadPending();
+const pendingItem = pending.find(item => item.model === model);
+
+if (pendingItem) {
+  const plan = loadPlan();
+  const existing = plan.find(item => item.model === model);
+
+  if (existing) {
+    existing.qty += pendingItem.qty;
+  } else {
+    plan.push({ model, qty: pendingItem.qty });
+  }
+
+  savePlan(plan);
+  savePending(pending.filter(item => item.model !== model));
+}
+
+closeModal();
+renderBOM();
+renderPlan();
+renderPending();
+refreshPlanSelect();
+
+if (pendingItem) {
+  toast(`已建立 ${model}，並加入生產計畫 ${pendingItem.qty} 台`, 'success');
+} else {
+  toast((isEditing ? '已更新 ' : '已新增 ') + model, 'success');
+}
 }
 
 // close on overlay click
@@ -210,6 +240,33 @@ function renderPlan() {
   `).join('');
 }
 
+// ===== PENDING BOM =====
+function renderPending() {
+  const pending = loadPending();
+  const listEl = document.getElementById('pending-list');
+  const emptyEl = document.getElementById('pending-empty');
+  const countEl = document.getElementById('pending-count');
+
+  countEl.textContent = `${pending.length} 筆待處理`;
+
+  if (pending.length === 0) {
+    listEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+
+  listEl.innerHTML = pending.map(item => `
+    <div class="plan-item">
+      <div class="plan-item-info">
+        <span class="plan-item-model">${esc(item.model)}</span>
+        <span class="plan-item-qty">尚未建立 BOM</span>
+        <span class="qty-badge">${item.qty} 台</span>
+      </div>
+    </div>
+  `).join('');
+}
 // ===== RESULT TAB =====
 function calculate() {
   const bom  = loadBOM();
@@ -310,6 +367,150 @@ function esc(str) {
     .replace(/"/g,'&quot;');
 }
 
+// ===== EXCEL IMPORT =====
+async function importExcel() {
+  const fileInput = document.getElementById('excel-file');
+  const file = fileInput.files[0];
+
+  if (!file) {
+    toast('請先選擇 Excel 檔案', 'error');
+    return;
+  }
+
+  if (typeof XLSX === 'undefined') {
+    toast('Excel 讀取工具尚未載入', 'error');
+    return;
+  }
+
+  const oldPlan = loadPlan();
+
+  if (
+    oldPlan.length > 0 &&
+    !confirm('目前已有生產計畫，匯入後會清空並重新建立，是否繼續？')
+  ) {
+    return;
+  }
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+
+    const workbook = XLSX.read(arrayBuffer, {
+      type: 'array'
+    });
+
+    // 優先讀取「AE線」，沒有時讀取第一個工作表
+    const sheetName = workbook.SheetNames.includes('AE線')
+      ? 'AE線'
+      : workbook.SheetNames[0];
+
+    const worksheet = workbook.Sheets[sheetName];
+
+    const rows = XLSX.utils.sheet_to_json(worksheet, {
+      header: 1,
+      defval: null,
+      raw: true
+    });
+
+    const normalizeModel = value =>
+      String(value)
+        .trim()
+        .replace(/^\*+|\*+$/g, '')
+        .trim()
+        .toUpperCase();
+
+    const excelModels = {};
+
+    rows.forEach(row => {
+      const no = Number(row[1]);       // B 欄：NO
+      const rawModel = row[2];         // C 欄：機種
+      const qty = Number(row[5]);      // F 欄：台數
+
+      // 排除標題、合計、空白列
+      if (!Number.isFinite(no)) return;
+      if (!rawModel) return;
+      if (!Number.isFinite(qty) || qty <= 0) return;
+
+      const model = normalizeModel(rawModel);
+
+      if (!model) return;
+
+      // 同機種自動加總
+      excelModels[model] = (excelModels[model] || 0) + Math.trunc(qty);
+    });
+
+    const bom = loadBOM();
+
+    // 建立 BOM 機種比對表
+    const bomLookup = {};
+
+    Object.keys(bom).forEach(model => {
+      bomLookup[normalizeModel(model)] = model;
+    });
+
+    const newPlan = [];
+    const pendingModels = [];
+
+    Object.entries(excelModels).forEach(([excelModel, qty]) => {
+      const bomModel = bomLookup[excelModel];
+
+      if (!bomModel) {
+        pendingModels.push({model: excelModel,qty});
+        return;
+      }
+
+      newPlan.push({
+        model: bomModel,
+        qty
+      });
+    });
+
+    savePending(pendingModels);
+    renderPending();
+    if (newPlan.length === 0) {
+      toast('沒有找到已建立 BOM 的機種', 'error');
+
+      if (missingModels.length > 0) {
+        alert(
+          '以下機種尚未建立 BOM：\n\n' +
+          missingModels.slice(0, 30).join('\n')
+        );
+      }
+
+      return;
+    }
+
+    savePlan(newPlan);
+    renderPlan();
+    renderPending();
+    renderResult();
+
+    const totalQty = newPlan.reduce((sum, item) => sum + item.qty, 0);
+
+    toast(
+      `成功匯入 ${newPlan.length} 個機種，共 ${totalQty} 台`,
+      'success'
+    );
+
+    if (missingModels.length > 0) {
+      const extraText =
+        missingModels.length > 30
+          ? `\n\n另有 ${missingModels.length - 30} 個未顯示`
+          : '';
+
+      alert(
+        `已略過 ${missingModels.length} 個尚未建立 BOM 的機種：\n\n` +
+        missingModels.slice(0, 30).join('\n') +
+        extraText
+      );
+    }
+
+    fileInput.value = '';
+
+  } catch (error) {
+    console.error('Excel 匯入失敗：', error);
+    toast('Excel 讀取失敗，請確認檔案格式', 'error');
+  }
+}
 // ===== INIT =====
 renderBOM();
 renderPlan();
