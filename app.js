@@ -412,11 +412,12 @@ async function importExcel() {
     });
 
     const normalizeModel = value =>
-      String(value)
-        .trim()
-        .replace(/^\*+|\*+$/g, '')
-        .trim()
-        .toUpperCase();
+  String(value)
+    .trim()
+    .replace(/^\*+|\*+$/g, '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s*\([A-Z]{2,3}\)\s*$/, '');
 
     const excelModels = {};
 
