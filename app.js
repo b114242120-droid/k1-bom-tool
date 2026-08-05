@@ -37,6 +37,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'daily') renderDailyParts();
+    if (btn.dataset.tab === 'part-lines') renderPartLineSettings();
     if (btn.dataset.tab === 'result') renderResult();
   });
 });
@@ -345,6 +346,86 @@ function formatDailyDate(dateKey) {
   return `${Number(parts[1])}/${Number(parts[2])}`;
 } // formatDailyDate 結束
 
+function collectBOMParts() {
+  const bom = loadBOM();
+  const parts = {};
+
+  Object.entries(bom).forEach(([model, row]) => {
+    PART_TYPES.forEach(type => {
+      const code = String(row[type] || '').trim();
+      if (!code) return;
+
+      const key = `${type}__${code}`;
+
+      if (!parts[key]) {
+        parts[key] = {
+          type,
+          code,
+          models: []
+        };
+      }
+
+      if (!parts[key].models.includes(model)) {
+        parts[key].models.push(model);
+      }
+    });
+  });
+
+  return Object.values(parts).sort((a, b) => {
+    const typeOrder =
+      PART_TYPES.indexOf(a.type) - PART_TYPES.indexOf(b.type);
+
+    if (typeOrder !== 0) return typeOrder;
+    return a.code.localeCompare(b.code);
+  });
+} // collectBOMParts 結束
+
+function renderPartLineSettings() {
+  const data = collectBOMParts();
+  const partLines = loadPartLines();
+
+  const tbody = document.getElementById('part-line-tbody');
+  const empty = document.getElementById('part-line-empty');
+  const summary = document.getElementById('part-line-summary');
+
+  if (data.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    summary.textContent = '尚無部品資料';
+    return;
+  }
+
+  empty.style.display = 'none';
+  summary.textContent = `共 ${data.length} 筆部品`;
+
+  tbody.innerHTML = data.map(item => `
+    <tr>
+      <td>
+        <span class="part-type-tag ${PART_TAG_CLASS[item.type]}">
+          ${esc(item.type)}
+        </span>
+      </td>
+
+      <td>
+        <span class="part-code">${esc(item.code)}</span>
+      </td>
+
+      <td>${item.models.map(model => esc(model)).join('、')}</td>
+
+      <td>
+        <input
+          type="text"
+          value="${esc(partLines[item.code] || '')}"
+          placeholder="未設定"
+          data-part-code="${esc(item.code)}"
+          onchange="updatePartLine(this.dataset.partCode, this.value)"
+          style="width:120px"
+        >
+      </td>
+    </tr>
+  `).join('');
+} // renderPartLineSettings 結束
+
 function updatePartLine(partCode, lineName) {
   const partLines = loadPartLines();
   const value = lineName.trim();
@@ -356,6 +437,8 @@ function updatePartLine(partCode, lineName) {
   }
 
   savePartLines(partLines);
+  renderDailyParts();
+  renderPartLineSettings();
   toast(`已儲存 ${partCode} 的加工線別`, 'success');
 } // updatePartLine 結束
 
