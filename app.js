@@ -37,12 +37,26 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ===== BOM TAB =====
 function renderBOM() {
   const bom = loadBOM();
-  const keys = Object.keys(bom);
+const allKeys = Object.keys(bom);
+const keyword = (document.getElementById('bom-search-input')?.value || '').trim().toUpperCase();
+
+const keys = allKeys.filter(model => {
+  const row = bom[model];
+
+  if (!keyword) return true;
+  if (model.toUpperCase().includes(keyword)) return true;
+
+  return PART_TYPES.some(pt =>
+    String(row[pt] || '').toUpperCase().includes(keyword)
+  );
+});
   const tbody = document.getElementById('bom-tbody');
   const empty = document.getElementById('bom-empty');
   const countEl = document.getElementById('bom-count');
 
-  countEl.textContent = keys.length + ' 筆機種';
+  countEl.textContent = keyword
+  ? `${keys.length} / ${allKeys.length} 筆機種`
+  : `${allKeys.length} 筆機種`;
 
   if (keys.length === 0) {
     tbody.innerHTML = '';
@@ -526,3 +540,4 @@ renderBOM();
 renderPlan();
 renderPending();
 refreshPlanSelect();
+document.getElementById('bom-search-input')?.addEventListener('input', renderBOM);
