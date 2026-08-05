@@ -29,6 +29,7 @@
   <div class="tab-nav-inner">
     <button class="tab-btn active" data-tab="bom">📋 BOM 管理</button>
     <button class="tab-btn" data-tab="production">📥 生產計畫</button>
+    <button class="tab-btn" data-tab="daily">🗓️ 每日部品計畫</button>
     <button class="tab-btn" data-tab="result">📊 加工數彙總</button>
   </div>
 </nav>
@@ -148,6 +149,30 @@
     </div>
   </section>
 
+  <!-- ── DAILY PARTS TAB ── -->
+<section id="tab-daily" class="tab-pane">
+  <div class="page-header">
+    <div>
+      <h2>每日部品計畫</h2>
+      <p id="daily-plan-summary">尚未匯入每日生產資料</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table id="daily-parts-table">
+        <thead id="daily-parts-thead"></thead>
+        <tbody id="daily-parts-tbody"></tbody>
+      </table>
+    </div>
+
+    <div id="daily-parts-empty" class="empty-state">
+      <div class="empty-icon">🗓️</div>
+      <p>尚無每日部品計畫</p>
+      <span>請先至「生產計畫」匯入 Excel</span>
+    </div>
+  </div>
+</section>
   <!-- ── RESULT TAB ── -->
   <section id="tab-result" class="tab-pane">
     <div class="page-header">
