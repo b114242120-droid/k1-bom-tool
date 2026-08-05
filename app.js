@@ -253,7 +253,7 @@ function renderPending() {
     listEl.innerHTML = '';
     emptyEl.style.display = 'block';
     return;
-  }
+  } // 無待處理資料
 
   emptyEl.style.display = 'none';
 
@@ -264,9 +264,18 @@ function renderPending() {
         <span class="plan-item-qty">尚未建立 BOM</span>
         <span class="qty-badge">${item.qty} 台</span>
       </div>
+      <button class="btn btn-primary btn-sm" onclick="openPendingBOM('${esc(item.model)}')">＋ 建立 BOM</button>
     </div>
   `).join('');
-}
+} // renderPending 結束
+
+function openPendingBOM(model) {
+  openAddModal();
+  document.getElementById('modal-title').textContent = '建立待處理 BOM';
+  document.getElementById('modal-model').value = model;
+  document.getElementById('field-L_CASE').focus();
+} // openPendingBOM 結束
+
 // ===== RESULT TAB =====
 function calculate() {
   const bom  = loadBOM();
@@ -515,4 +524,5 @@ async function importExcel() {
 // ===== INIT =====
 renderBOM();
 renderPlan();
+renderPending();
 refreshPlanSelect();
