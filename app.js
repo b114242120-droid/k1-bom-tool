@@ -3,6 +3,7 @@ const BOM_KEY  = 'k1_bom_data';
 const PLAN_KEY = 'k1_production_plan';
 const PENDING_KEY = 'k1_pending_bom';
 const DAILY_PLAN_KEY = 'k1_daily_production_plan';
+const PART_LINE_KEY = 'k1_part_lines';
 
 const PART_TYPES = ['L CASE', 'R CASE', 'L COVER', 'R COVER', 'M CASE', 'UPPER CASE', 'BED CASE'];
 
@@ -25,6 +26,8 @@ function loadPending() { return JSON.parse(localStorage.getItem(PENDING_KEY) || 
 function savePending(d) { localStorage.setItem(PENDING_KEY, JSON.stringify(d));}
 function loadDailyPlan() { return JSON.parse(localStorage.getItem(DAILY_PLAN_KEY) || '{}'); }
 function saveDailyPlan(d) { localStorage.setItem(DAILY_PLAN_KEY, JSON.stringify(d)); }
+function loadPartLines() { return JSON.parse(localStorage.getItem(PART_LINE_KEY) || '{}'); }
+function savePartLines(d) { localStorage.setItem(PART_LINE_KEY, JSON.stringify(d)); }
 
 // ===== TAB =====
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -342,10 +345,25 @@ function formatDailyDate(dateKey) {
   return `${Number(parts[1])}/${Number(parts[2])}`;
 } // formatDailyDate 結束
 
+function updatePartLine(partCode, lineName) {
+  const partLines = loadPartLines();
+  const value = lineName.trim();
+
+  if (value) {
+    partLines[partCode] = value;
+  } else {
+    delete partLines[partCode];
+  }
+
+  savePartLines(partLines);
+  toast(`已儲存 ${partCode} 的加工線別`, 'success');
+} // updatePartLine 結束
+
 function renderDailyParts() {
   const dailyPlan = loadDailyPlan();
+  const partLines = loadPartLines();
   const dates = Object.keys(dailyPlan).sort();
-  const data = calculateDailyParts();
+  const data = calculateDailyParts();  
 
   const thead = document.getElementById('daily-parts-thead');
   const tbody = document.getElementById('daily-parts-tbody');
@@ -366,6 +384,7 @@ function renderDailyParts() {
 
   thead.innerHTML = `
     <tr>
+      <th>加工線別</th>
       <th>部品類型</th>
       <th>部品代號</th>
       <th>總數</th>
@@ -378,10 +397,21 @@ function renderDailyParts() {
   tbody.innerHTML = data.map(item => `
     <tr>
       <td>
-        <span class="part-type-tag ${PART_TAG_CLASS[item.type]}">
-          ${esc(item.type)}
-        </span>
+        <input
+          type="text"
+          value="${esc(partLines[item.code] || '')}"
+          placeholder="未設定"
+          data-part-code="${esc(item.code)}"
+          onchange="updatePartLine(this.dataset.partCode, this.value)"
+          style="width:100px"
+        >
       </td>
+
+    <td>
+      <span class="part-type-tag ${PART_TAG_CLASS[item.type]}">
+        ${esc(item.type)}
+      </span>
+    </td>
       <td><span class="part-code">${esc(item.code)}</span></td>
       <td class="qty-cell">${item.total}</td>
       ${dates.map(dateKey =>
