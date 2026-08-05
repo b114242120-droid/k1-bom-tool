@@ -30,6 +30,7 @@
     <button class="tab-btn active" data-tab="bom">📋 BOM 管理</button>
     <button class="tab-btn" data-tab="production">📥 生產計畫</button>
     <button class="tab-btn" data-tab="daily">🗓️ 每日部品計畫</button>
+    <button class="tab-btn" data-tab="part-lines">⚙️ 部品線別設定</button>
     <button class="tab-btn" data-tab="result">📊 加工數彙總</button>
   </div>
 </nav>
@@ -173,6 +174,38 @@
     </div>
   </div>
 </section>
+<!-- ── PART LINE SETTINGS TAB ── -->
+<section id="tab-part-lines" class="tab-pane">
+  <div class="page-header">
+    <div>
+      <h2>部品線別設定</h2>
+      <p id="part-line-summary">管理各部品所屬的加工線別</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table id="part-line-table">
+        <thead>
+          <tr>
+            <th>部品類型</th>
+            <th>部品代號</th>
+            <th>使用機種</th>
+            <th>加工線別</th>
+          </tr>
+        </thead>
+        <tbody id="part-line-tbody"></tbody>
+      </table>
+    </div>
+
+    <div id="part-line-empty" class="empty-state">
+      <div class="empty-icon">⚙️</div>
+      <p>尚無部品資料</p>
+      <span>請先建立組車機種 BOM</span>
+    </div>
+  </div>
+</section>
+
   <!-- ── RESULT TAB ── -->
   <section id="tab-result" class="tab-pane">
     <div class="page-header">
