@@ -2,6 +2,7 @@
 const BOM_KEY  = 'k1_bom_data';
 const PLAN_KEY = 'k1_production_plan';
 const PENDING_KEY = 'k1_pending_bom';
+const DAILY_PLAN_KEY = 'k1_daily_production_plan';
 
 const PART_TYPES = ['L CASE', 'R CASE', 'L COVER', 'R COVER', 'M CASE', 'UPPER CASE', 'BED CASE'];
 
@@ -22,6 +23,8 @@ function loadPlan()  { return JSON.parse(localStorage.getItem(PLAN_KEY) || '[]')
 function savePlan(d) { localStorage.setItem(PLAN_KEY, JSON.stringify(d)); }
 function loadPending() { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');}
 function savePending(d) { localStorage.setItem(PENDING_KEY, JSON.stringify(d));}
+function loadDailyPlan() { return JSON.parse(localStorage.getItem(DAILY_PLAN_KEY) || '{}'); }
+function saveDailyPlan(d) { localStorage.setItem(DAILY_PLAN_KEY, JSON.stringify(d)); }
 
 // ===== TAB =====
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -30,6 +33,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'daily') renderDailyParts();
     if (btn.dataset.tab === 'result') renderResult();
   });
 });
@@ -290,6 +294,103 @@ function openPendingBOM(model) {
   document.getElementById('field-L_CASE').focus();
 } // openPendingBOM 結束
 
+// ===== DAILY PARTS PLAN =====
+function calculateDailyParts() {
+  const dailyPlan = loadDailyPlan();
+  const bom = loadBOM();
+  const result = {};
+
+  Object.entries(dailyPlan).forEach(([dateKey, models]) => {
+    Object.entries(models).forEach(([model, qty]) => {
+      const modelBOM = bom[model];
+      if (!modelBOM) return;
+
+      PART_TYPES.forEach(partType => {
+        const code = modelBOM[partType];
+        if (!code) return;
+
+        const key = `${partType}__${code}`;
+
+        if (!result[key]) {
+          result[key] = {
+            type: partType,
+            code,
+            total: 0,
+            dates: {}
+          };
+        }
+
+        result[key].dates[dateKey] =
+          (result[key].dates[dateKey] || 0) + qty;
+
+        result[key].total += qty;
+      }); // 部品計算結束
+    }); // 機種計算結束
+  }); // 日期計算結束
+
+  return Object.values(result).sort((a, b) => {
+    const typeOrder =
+      PART_TYPES.indexOf(a.type) - PART_TYPES.indexOf(b.type);
+
+    if (typeOrder !== 0) return typeOrder;
+    return a.code.localeCompare(b.code);
+  });
+} // calculateDailyParts 結束
+
+function formatDailyDate(dateKey) {
+  const parts = dateKey.split('-');
+  return `${Number(parts[1])}/${Number(parts[2])}`;
+} // formatDailyDate 結束
+
+function renderDailyParts() {
+  const dailyPlan = loadDailyPlan();
+  const dates = Object.keys(dailyPlan).sort();
+  const data = calculateDailyParts();
+
+  const thead = document.getElementById('daily-parts-thead');
+  const tbody = document.getElementById('daily-parts-tbody');
+  const empty = document.getElementById('daily-parts-empty');
+  const summary = document.getElementById('daily-plan-summary');
+
+  if (dates.length === 0 || data.length === 0) {
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    summary.textContent = '尚未匯入每日生產資料';
+    return;
+  } // 無每日資料
+
+  empty.style.display = 'none';
+  summary.textContent =
+    `${data.length} 種部品／${dates.length} 個生產日期`;
+
+  thead.innerHTML = `
+    <tr>
+      <th>部品類型</th>
+      <th>部品代號</th>
+      <th>總數</th>
+      ${dates.map(dateKey =>
+        `<th>${formatDailyDate(dateKey)}</th>`
+      ).join('')}
+    </tr>
+  `;
+
+  tbody.innerHTML = data.map(item => `
+    <tr>
+      <td>
+        <span class="part-type-tag ${PART_TAG_CLASS[item.type]}">
+          ${esc(item.type)}
+        </span>
+      </td>
+      <td><span class="part-code">${esc(item.code)}</span></td>
+      <td class="qty-cell">${item.total}</td>
+      ${dates.map(dateKey =>
+        `<td>${item.dates[dateKey] || '—'}</td>`
+      ).join('')}
+    </tr>
+  `).join('');
+} // renderDailyParts 結束
+
 // ===== RESULT TAB =====
 function calculate() {
   const bom  = loadBOM();
@@ -389,6 +490,41 @@ function esc(str) {
     .replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;');
 }
+function buildDateColumns(headerRow) {
+  const columns = {};
+  let year = null;
+  let month = null;
+  let previousDay = null;
+
+  for (let col = 7; col < headerRow.length; col++) {
+    const value = Number(headerRow[col]);
+    if (!Number.isFinite(value)) continue;
+
+    if (value > 31) {
+      const parsed = XLSX.SSF.parse_date_code(value);
+      if (!parsed) continue;
+
+      year = parsed.y;
+      month = parsed.m;
+      previousDay = parsed.d;
+
+      columns[col] = `${year}-${String(month).padStart(2, '0')}-${String(previousDay).padStart(2, '0')}`;
+      continue;
+    }
+
+    if (value < 1 || value > 31 || year === null) continue;
+
+    if (previousDay !== null && value < previousDay) {
+      month += 1;
+      if (month > 12) { month = 1; year += 1; }
+    }
+
+    previousDay = value;
+    columns[col] = `${year}-${String(month).padStart(2, '0')}-${String(value).padStart(2, '0')}`;
+  } // 日期欄迴圈結束
+
+  return columns;
+} // buildDateColumns 結束
 
 // ===== EXCEL IMPORT =====
 async function importExcel() {
@@ -442,9 +578,17 @@ async function importExcel() {
     .toUpperCase()
     .replace(/\s*\([A-Z]{2,3}\)\s*$/, '');
 
+    const dailyPlan = {};
+    let dateColumns = {};
     const excelModels = {};
 
     rows.forEach(row => {
+      const isHeader = String(row[1] || '').trim().toUpperCase() === 'NO';
+
+  if (isHeader) {
+    dateColumns = buildDateColumns(row);
+    return;
+  } // 日期表頭處理結束
       const no = Number(row[1]);       // B 欄：NO
       const rawModel = row[2];         // C 欄：機種
       const qty = Number(row[5]);      // F 欄：台數
@@ -457,10 +601,20 @@ async function importExcel() {
       const model = normalizeModel(rawModel);
 
       if (!model) return;
+      Object.entries(dateColumns).forEach(([col, dateKey]) => {
+      const dailyQty = Number(row[Number(col)]);
+      if (!Number.isFinite(dailyQty) || dailyQty <= 0) return;
+
+      if (!dailyPlan[dateKey]) dailyPlan[dateKey] = {};
+      dailyPlan[dateKey][model] = (dailyPlan[dateKey][model] || 0) + Math.trunc(dailyQty);
+      }); // 每日數量加總結束
 
       // 同機種自動加總
       excelModels[model] = (excelModels[model] || 0) + Math.trunc(qty);
     });
+
+    saveDailyPlan(dailyPlan);
+    renderDailyParts();
 
     const bom = loadBOM();
 
@@ -488,6 +642,8 @@ async function importExcel() {
       });
     });
 
+    const missingModels = pendingModels.map(item => item.model);
+    
     savePending(pendingModels);
     renderPending();
     if (newPlan.length === 0) {
