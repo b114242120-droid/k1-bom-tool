@@ -229,10 +229,18 @@ function removePlanItem(model) {
 }
 
 function clearPlan() {
-  if (!confirm('確定清空所有生產計畫？')) return;
+  if (!confirm('確定清空生產計畫與每日部品計畫？')) return;
+
   savePlan([]);
+  savePending([]);
+  saveDailyPlan({});
+
   renderPlan();
-  toast('已清空生產計畫', 'success');
+  renderPending();
+  renderDailyParts();
+  renderResult();
+
+  toast('已清空生產計畫與每日部品計畫', 'success');
 }
 
 function renderPlan() {
