@@ -585,6 +585,18 @@ function updatePartLine(partCode, lineName) {
   toast(`已儲存 ${partCode} 的加工線別`, 'success');
 } // updatePartLine 結束
 
+const collapsedLineGroups = new Set();
+
+function toggleLineGroup(line) {
+  if (collapsedLineGroups.has(line)) {
+    collapsedLineGroups.delete(line);
+  } else {
+    collapsedLineGroups.add(line);
+  }
+
+  renderDailyParts();
+} // toggleLineGroup 結束
+
 function renderDailyParts() {
   const dailyPlan = loadDailyPlan();
   const partLines = loadPartLines();
@@ -657,6 +669,7 @@ const groupOrder = [...PROCESS_LINES, 'UNASSIGNED'];
       const lineName = line === 'UNASSIGNED'
         ? '⚠️ 未設定加工線'
         : `${line} LINE`;
+      const isCollapsed = collapsedLineGroups.has(line);
 
       const groupTotal = items.reduce(
         (sum, item) => sum + item.total,
@@ -664,16 +677,19 @@ const groupOrder = [...PROCESS_LINES, 'UNASSIGNED'];
       );
 
       return `
-        <tr class="line-group-row">
+       <tr class="line-group-row"
+       onclick="toggleLineGroup('${line}')"
+       style="cursor:pointer">
           <td colspan="${4 + dates.length}"
               style="text-align:left;font-weight:700">
+            ${isCollapsed ? '▶' : '▼'}
             ${lineName}
             ｜${items.length} 種部品
             ｜總數 ${groupTotal}
           </td>
         </tr>
 
-        ${items.map(item => `
+        ${isCollapsed ? '' : items.map(item => `
           <tr>
             <td>
               <select
