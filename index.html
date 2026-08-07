@@ -30,7 +30,7 @@
     <button class="tab-btn active" data-tab="bom">📋 BOM 管理</button>
     <button class="tab-btn" data-tab="production">📥 生產計畫</button>
     <button class="tab-btn" data-tab="daily">🗓️ 每日部品計畫</button>
-    <button class="tab-btn" data-tab="part-lines">⚙️ 部品線別設定</button>
+    <button class="tab-btn" data-tab="part-lines">⚙️ 加工部品主檔</button>
     <button class="tab-btn" data-tab="result">📊 加工數彙總</button>
   </div>
 </nav>
@@ -178,8 +178,8 @@
 <section id="tab-part-lines" class="tab-pane">
   <div class="page-header">
     <div>
-      <h2>部品線別設定</h2>
-      <p id="part-line-summary">管理各部品所屬的加工線別</p>
+      <h2>加工部品主檔</h2>
+      <p id="part-line-summary">管理部品加工線別、加工設備與 NT</p>
     </div>
   </div>
 
@@ -188,10 +188,10 @@
       <table id="part-line-table">
         <thead>
           <tr>
-            <th>部品類型</th>
             <th>部品代號</th>
-            <th>使用機種</th>
             <th>加工線別</th>
+            <th>OP數量</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody id="part-line-tbody"></tbody>
@@ -317,6 +317,52 @@
 
 <!-- ===== TOAST ===== -->
 <div id="toast-container" class="toast-container"></div>
+<!-- ── PART MASTER MODAL ── -->
+<div id="part-master-overlay" class="modal-overlay hidden">
+  <div class="modal" style="max-width:750px">
+    <div class="modal-header">
+      <h3>加工部品設定</h3>
+      <button class="modal-close" onclick="closePartMaster()">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div style="margin-bottom:1rem">
+        <strong>部品代號：</strong>
+        <span id="part-master-code"></span>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>OP編號</th>
+            <th>管理編號</th>
+            <th>NT（秒）</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+
+        <tbody id="part-master-ops"></tbody>
+      </table>
+
+      <button
+        class="btn btn-secondary"
+        onclick="addPartOperationRow()"
+        style="margin-top:1rem">
+        ＋ 新增 OP
+      </button>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closePartMaster()">
+        取消
+      </button>
+
+      <button class="btn btn-primary" onclick="savePartMaster()">
+        儲存
+      </button>
+    </div>
+  </div>
+</div>
 
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="app.js"></script>

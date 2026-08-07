@@ -4,6 +4,7 @@ const PLAN_KEY = 'k1_production_plan';
 const PENDING_KEY = 'k1_pending_bom';
 const DAILY_PLAN_KEY = 'k1_daily_production_plan';
 const PART_LINE_KEY = 'k1_part_lines';
+const PART_OPS_KEY = 'k1_part_operations';
 
 const PART_TYPES = ['L CASE', 'R CASE', 'L COVER', 'R COVER', 'M CASE', 'UPPER CASE', 'BED CASE'];
 
@@ -28,6 +29,9 @@ function loadDailyPlan() { return JSON.parse(localStorage.getItem(DAILY_PLAN_KEY
 function saveDailyPlan(d) { localStorage.setItem(DAILY_PLAN_KEY, JSON.stringify(d)); }
 function loadPartLines() { return JSON.parse(localStorage.getItem(PART_LINE_KEY) || '{}'); }
 function savePartLines(d) { localStorage.setItem(PART_LINE_KEY, JSON.stringify(d)); }
+
+function loadPartOperations() { return JSON.parse(localStorage.getItem(PART_OPS_KEY) || '{}'); }
+function savePartOperations(d) { localStorage.setItem(PART_OPS_KEY, JSON.stringify(d)); }
 
 // ===== TAB =====
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -391,6 +395,7 @@ function collectBOMParts() {
 function renderPartLineSettings() {
   const data = collectBOMParts();
   const partLines = loadPartLines();
+  const partOperations = loadPartOperations();
 
   const tbody = document.getElementById('part-line-tbody');
   const empty = document.getElementById('part-line-empty');
@@ -406,19 +411,14 @@ function renderPartLineSettings() {
   empty.style.display = 'none';
   summary.textContent = `共 ${data.length} 筆部品`;
 
-  tbody.innerHTML = data.map(item => `
-    <tr>
-      <td>
-        <span class="part-type-tag ${PART_TAG_CLASS[item.type]}">
-          ${esc(item.type)}
-        </span>
-      </td>
+  tbody.innerHTML = data.map(item => {
+  const operations = partOperations[item.code] || [];
 
+  return `
+    <tr>
       <td>
         <span class="part-code">${esc(item.code)}</span>
       </td>
-
-      <td>${item.models.map(model => esc(model)).join('、')}</td>
 
       <td>
         <input
@@ -430,9 +430,137 @@ function renderPartLineSettings() {
           style="width:120px"
         >
       </td>
+
+      <td>${operations.length}</td>
+
+      <td>
+        <button class="btn btn-secondary btn-sm"
+          onclick="openPartMaster('${esc(item.code)}')">
+          編輯
+        </button>
+      </td>
+    </tr>
+  `;
+}).join('');
+} // renderPartLineSettings 結束
+
+let editingPartCode = null;
+
+function openPartMaster(partCode) {
+  editingPartCode = partCode;
+
+  document.getElementById('part-master-code').textContent = partCode;
+  document.getElementById('part-master-overlay').classList.remove('hidden');
+
+  renderPartOperationRows();
+} // openPartMaster 結束
+
+function closePartMaster() {
+  document.getElementById('part-master-overlay').classList.add('hidden');
+  editingPartCode = null;
+} // closePartMaster 結束
+
+function renderPartOperationRows() {
+  const partOperations = loadPartOperations();
+  const operations = partOperations[editingPartCode] || [];
+  const tbody = document.getElementById('part-master-ops');
+
+  tbody.innerHTML = operations.map(item => `
+    <tr>
+      <td>
+        <input type="text"
+          value="${esc(item.op || '')}"
+          placeholder="OP10"
+          data-field="op">
+      </td>
+
+      <td>
+        <input type="text"
+          value="${esc(item.machine || '')}"
+          placeholder="1530-002719"
+          data-field="machine">
+      </td>
+
+      <td>
+        <input type="number"
+          value="${item.nt || ''}"
+          placeholder="813"
+          data-field="nt">
+      </td>
+
+      <td>
+        <button class="btn btn-danger btn-sm"
+          onclick="this.closest('tr').remove()">
+          刪除
+        </button>
+      </td>
     </tr>
   `).join('');
-} // renderPartLineSettings 結束
+} // renderPartOperationRows 結束
+
+function addPartOperationRow() {
+  const tbody = document.getElementById('part-master-ops');
+  const nextOP = (tbody.children.length + 1) * 10;
+
+  tbody.insertAdjacentHTML('beforeend', `
+    <tr>
+      <td>
+        <input type="text"
+          value="OP${nextOP}"
+          data-field="op">
+      </td>
+
+      <td>
+        <input type="text"
+          placeholder="1530-002719"
+          data-field="machine">
+      </td>
+
+      <td>
+        <input type="number"
+          placeholder="813"
+          data-field="nt">
+      </td>
+
+      <td>
+        <button class="btn btn-danger btn-sm"
+          onclick="this.closest('tr').remove()">
+          刪除
+        </button>
+      </td>
+    </tr>
+  `);
+} // addPartOperationRow 結束
+
+function savePartMaster() {
+  if (!editingPartCode) return;
+
+  const rows = document.querySelectorAll('#part-master-ops tr');
+  const operations = [];
+
+  for (const row of rows) {
+    const op = row.querySelector('[data-field="op"]').value.trim().toUpperCase();
+    const machine = row.querySelector('[data-field="machine"]').value.trim().toUpperCase();
+    const nt = Number(row.querySelector('[data-field="nt"]').value);
+
+    if (!op || !machine || !Number.isFinite(nt) || nt <= 0) {
+      toast('請完整輸入 OP、管理編號與 NT', 'error');
+      return;
+    }
+
+    operations.push({ op, machine, nt });
+  }
+
+  const partOperations = loadPartOperations();
+  partOperations[editingPartCode] = operations;
+
+  savePartOperations(partOperations);
+
+  closePartMaster();
+  renderPartLineSettings();
+
+  toast('已儲存加工部品資料', 'success');
+} // savePartMaster 結束
 
 function updatePartLine(partCode, lineName) {
   const partLines = loadPartLines();
