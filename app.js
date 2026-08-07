@@ -590,6 +590,23 @@ function renderDailyParts() {
   const partLines = loadPartLines();
   const dates = Object.keys(dailyPlan).sort();
   const data = calculateDailyParts();  
+  const filterEl = document.getElementById('daily-line-filter');
+const selectedLine = filterEl ? filterEl.value : '';
+
+if (filterEl) {
+  filterEl.innerHTML =
+    '<option value="">全部加工線</option>' +
+    PROCESS_LINES.map(line => `
+      <option value="${line}">${line} LINE</option>
+    `).join('');
+
+  filterEl.value = selectedLine;
+}
+
+const filteredData = selectedLine
+  ? data.filter(item => partLines[item.code] === selectedLine)
+  : data;
+
 
   const thead = document.getElementById('daily-parts-thead');
   const tbody = document.getElementById('daily-parts-tbody');
@@ -605,8 +622,9 @@ function renderDailyParts() {
   } // 無每日資料
 
   empty.style.display = 'none';
-  summary.textContent =
-    `${data.length} 種部品／${dates.length} 個生產日期`;
+  summary.textContent = selectedLine
+    ? `${selectedLine} LINE｜${filteredData.length} 種部品／${dates.length} 個生產日期`
+    : `${data.length} 種部品／${dates.length} 個生產日期`;
 
   thead.innerHTML = `
     <tr>
@@ -620,7 +638,7 @@ function renderDailyParts() {
     </tr>
   `;
 
-  tbody.innerHTML = data.map(item => `
+  tbody.innerHTML = filteredData.map(item => `
     <tr>
       <td>
         <select
