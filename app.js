@@ -5,8 +5,8 @@ const PENDING_KEY = 'k1_pending_bom';
 const DAILY_PLAN_KEY = 'k1_daily_production_plan';
 const PART_LINE_KEY = 'k1_part_lines';
 const PART_OPS_KEY = 'k1_part_operations';
-
 const PART_TYPES = ['L CASE', 'R CASE', 'L COVER', 'R COVER', 'M CASE', 'UPPER CASE', 'BED CASE'];
+const PROCESS_LINES = [ 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I1', 'I2', 'O', 'P', 'Q', 'R', 'S'];
 
 const PART_TAG_CLASS = {
   'L CASE':    'tag-lcase',
@@ -421,14 +421,21 @@ function renderPartLineSettings() {
       </td>
 
       <td>
-        <input
-          type="text"
-          value="${esc(partLines[item.code] || '')}"
-          placeholder="未設定"
-          data-part-code="${esc(item.code)}"
-          onchange="updatePartLine(this.dataset.partCode, this.value)"
-          style="width:120px"
+        <select
+        data-part-code="${esc(item.code)}"
+        onchange="updatePartLine(this.dataset.partCode, this.value)"
+        style="width:120px"
         >
+        <option value="">未設定</option>
+
+        ${PROCESS_LINES.map(line => `
+        <option
+          value="${line}"
+          ${partLines[item.code] === line ? 'selected' : ''}>
+          ${line} LINE
+        </option>
+          `).join('')}
+        </select>
       </td>
 
       <td>${operations.length}</td>
@@ -616,14 +623,21 @@ function renderDailyParts() {
   tbody.innerHTML = data.map(item => `
     <tr>
       <td>
-        <input
-          type="text"
-          value="${esc(partLines[item.code] || '')}"
-          placeholder="未設定"
-          data-part-code="${esc(item.code)}"
-          onchange="updatePartLine(this.dataset.partCode, this.value)"
-          style="width:100px"
+        <select
+        data-part-code="${esc(item.code)}"
+        onchange="updatePartLine(this.dataset.partCode, this.value)"
+        style="width:100px"
         >
+          <option value="">未設定</option>
+
+            ${PROCESS_LINES.map(line => `
+            <option
+            value="${line}"
+            ${partLines[item.code] === line ? 'selected' : ''}>
+            ${line} LINE
+          </option>
+        `).join('')}
+        </select>
       </td>
 
     <td>
