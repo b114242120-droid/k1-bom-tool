@@ -607,6 +607,18 @@ const filteredData = selectedLine
   ? data.filter(item => partLines[item.code] === selectedLine)
   : data;
 
+// 依加工線分組
+const groupedData = {};
+
+filteredData.forEach(item => {
+  const line = partLines[item.code] || 'UNASSIGNED';
+
+  if (!groupedData[line]) groupedData[line] = [];
+
+  groupedData[line].push(item);
+});
+
+const groupOrder = [...PROCESS_LINES, 'UNASSIGNED'];
 
   const thead = document.getElementById('daily-parts-thead');
   const tbody = document.getElementById('daily-parts-tbody');
@@ -638,38 +650,69 @@ const filteredData = selectedLine
     </tr>
   `;
 
-  tbody.innerHTML = filteredData.map(item => `
-    <tr>
-      <td>
-        <select
-        data-part-code="${esc(item.code)}"
-        onchange="updatePartLine(this.dataset.partCode, this.value)"
-        style="width:100px"
-        >
-          <option value="">未設定</option>
+  tbody.innerHTML = groupOrder
+    .filter(line => groupedData[line]?.length)
+    .map(line => {
+      const items = groupedData[line];
+      const lineName = line === 'UNASSIGNED'
+        ? '⚠️ 未設定加工線'
+        : `${line} LINE`;
 
-            ${PROCESS_LINES.map(line => `
-            <option
-            value="${line}"
-            ${partLines[item.code] === line ? 'selected' : ''}>
-            ${line} LINE
-          </option>
-        `).join('')}
-        </select>
-      </td>
+      const groupTotal = items.reduce(
+        (sum, item) => sum + item.total,
+        0
+      );
 
-    <td>
-      <span class="part-type-tag ${PART_TAG_CLASS[item.type]}">
-        ${esc(item.type)}
-      </span>
-    </td>
-      <td><span class="part-code">${esc(item.code)}</span></td>
-      <td class="qty-cell">${item.total}</td>
-      ${dates.map(dateKey =>
-        `<td>${item.dates[dateKey] || '—'}</td>`
-      ).join('')}
-    </tr>
-  `).join('');
+      return `
+        <tr class="line-group-row">
+          <td colspan="${4 + dates.length}"
+              style="text-align:left;font-weight:700">
+            ${lineName}
+            ｜${items.length} 種部品
+            ｜總數 ${groupTotal}
+          </td>
+        </tr>
+
+        ${items.map(item => `
+          <tr>
+            <td>
+              <select
+                data-part-code="${esc(item.code)}"
+                onchange="updatePartLine(this.dataset.partCode, this.value)"
+                style="width:100px"
+              >
+                <option value="">未設定</option>
+
+                ${PROCESS_LINES.map(optionLine => `
+                  <option
+                    value="${optionLine}"
+                    ${partLines[item.code] === optionLine ? 'selected' : ''}>
+                    ${optionLine} LINE
+                  </option>
+                `).join('')}
+              </select>
+            </td>
+
+          <td>
+            <span class="part-type-tag ${PART_TAG_CLASS[item.type]}">
+              ${esc(item.type)}
+            </span>
+          </td>
+
+          <td>
+            <span class="part-code">${esc(item.code)}</span>
+          </td>
+
+          <td class="qty-cell">${item.total}</td>
+
+          ${dates.map(dateKey =>
+            `<td>${item.dates[dateKey] || '—'}</td>`
+          ).join('')}
+        </tr>
+      `).join('')}
+    `;
+  })
+  .join('');
 } // renderDailyParts 結束
 
 // ===== RESULT TAB =====
