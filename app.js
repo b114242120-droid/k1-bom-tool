@@ -343,27 +343,163 @@ function renderEquipmentMaster() {
   empty.style.display = 'none';
 
   tbody.innerHTML = data.map(item => `
-    <tr>
-      <td>
-        <span class="part-code">${esc(item.machine)}</span>
-      </td>
+  <tr>
+    <td>
+      <span class="part-code">${esc(item.machine)}</span>
+    </td>
 
-      <td>${esc(item.line)} LINE</td>
+    <td>${esc(item.name || '—')}</td>
 
-      <td>${item.critical ? '✅ 是' : '— 否'}</td>
+    <td>${esc(item.department || '—')}</td>
 
-      <td>
-        <button
-          class="btn btn-danger btn-sm"
-          data-machine="${esc(item.machine)}"
-          onclick="deleteEquipment(this.dataset.machine)">
-          刪除
-        </button>
-      </td>
-    </tr>
-  `).join('');
+    <td>${esc(item.line || '—')} LINE</td>
+
+    <td>${item.critical ? '✅ 是' : '— 否'}</td>
+
+    <td>
+      <button
+        class="btn btn-danger btn-sm"
+        data-machine="${esc(item.machine)}"
+        onclick="deleteEquipment(this.dataset.machine)">
+        刪除
+      </button>
+    </td>
+  </tr>
+`).join('');
 } // renderEquipmentMaster 結束
 
+function exportEquipmentMaster() {
+  const data = loadEquipmentMaster();
+
+  if (data.length === 0) {
+    toast('尚無設備主檔可轉出', 'error');
+    return;
+  }
+
+  const rows = data.map(item => ({
+    管理編號: item.machine || '',
+    設備名稱: item.name || '',
+    所屬部門: item.department || '',
+    所屬LINE: item.line || '',
+    關鍵設備: item.critical ? '是' : '否'
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    '設備主檔'
+  );
+
+  XLSX.writeFile(
+    workbook,
+    '設備主檔.xlsx'
+  );
+
+  toast('設備主檔已轉出', 'success');
+} // exportEquipmentMaster 結束
+
+async function importEquipmentMaster() {
+  const fileInput =
+    document.getElementById('equipment-excel-file');
+
+  const file = fileInput.files[0];
+
+  if (!file) return;
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+
+    const workbook = XLSX.read(arrayBuffer, {
+      type: 'array'
+    });
+
+    const worksheet =
+      workbook.Sheets[workbook.SheetNames[0]];
+
+    const rows = XLSX.utils.sheet_to_json(
+      worksheet,
+      { defval: '' }
+    );
+
+    const equipment = loadEquipmentMaster();
+
+    rows.forEach(row => {
+      const machine =
+        String(row['管理編號'] || '')
+          .trim()
+          .toUpperCase();
+
+      const name =
+        String(row['設備名稱'] || '').trim();
+
+      const department =
+        String(row['所屬部門'] || '')
+          .trim()
+          .toUpperCase();
+
+      const line =
+        String(
+          row['所屬LINE'] ||
+          row['所屬 LINE'] ||
+          ''
+        )
+          .trim()
+          .toUpperCase();
+
+      const criticalText =
+        String(row['關鍵設備'] || '')
+          .trim()
+          .toUpperCase();
+
+      if (!machine) return;
+
+      const critical =
+        ['是', 'Y', 'YES', 'TRUE', '1']
+          .includes(criticalText);
+
+      const existing =
+        equipment.find(
+          item => item.machine === machine
+        );
+
+      if (existing) {
+        existing.name = name;
+        existing.department = department;
+        existing.line = line;
+        existing.critical = critical;
+      } else {
+        equipment.push({
+          machine,
+          name,
+          department,
+          line,
+          critical
+        });
+      }
+    });
+
+    saveEquipmentMaster(equipment);
+    renderEquipmentMaster();
+
+    fileInput.value = '';
+
+    toast(
+      `設備主檔轉入完成，共讀取 ${rows.length} 筆`,
+      'success'
+    );
+
+  } catch (error) {
+    console.error('設備主檔轉入失敗：', error);
+
+    toast(
+      '設備主檔轉入失敗，請確認 Excel 格式',
+      'error'
+    );
+  }
+} // importEquipmentMaster 結束
 
 function addEquipment() {
   const tbody = document.getElementById('equipment-tbody');
