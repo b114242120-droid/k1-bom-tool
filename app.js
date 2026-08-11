@@ -6,6 +6,7 @@ const DAILY_PLAN_KEY = 'k1_daily_production_plan';
 const PART_LINE_KEY = 'k1_part_lines';
 const PART_OPS_KEY = 'k1_part_operations';
 const EQUIPMENT_KEY = 'k1_equipment_master';
+const CAPACITY_SETTINGS_KEY = 'k1_capacity_line_settings';
 const PART_TYPES = ['L CASE', 'R CASE', 'L COVER', 'R COVER', 'M CASE', 'UPPER CASE', 'BED CASE'];
 const PROCESS_LINES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I1', 'I2', 'O', 'P', 'Q', 'R', 'S'];
 
@@ -42,6 +43,19 @@ function saveEquipmentMaster(d) {
   localStorage.setItem(EQUIPMENT_KEY, JSON.stringify(d));
 }
 
+function loadCapacitySettings() {
+  return JSON.parse(
+    localStorage.getItem(CAPACITY_SETTINGS_KEY) || '{}'
+  );
+}
+
+function saveCapacitySettings(d) {
+  localStorage.setItem(
+    CAPACITY_SETTINGS_KEY,
+    JSON.stringify(d)
+  );
+}
+
 function getProcessLines() {
   const equipment = loadEquipmentMaster();
 
@@ -59,6 +73,244 @@ function getProcessLines() {
   ])];
 } // getProcessLines 結束
 
+function getCapacityLineSetting(line) {
+  const settings = loadCapacitySettings();
+
+  return settings[line] || {
+    attendanceDays: 22,
+
+    morningEnabled: true,
+    morningHours: 8,
+    morningBreak: 20,
+    morningMeal: 60,
+
+    eveningEnabled: true,
+    eveningHours: 8,
+    eveningMeal: 30,
+    eveningBreak: 10,
+
+    nightEnabled: true,
+    nightHours: 8,
+    nightBreak: 60
+  };
+} // getCapacityLineSetting 結束
+
+function renderCapacityLineSettings() {
+  const container =
+    document.getElementById('capacity-line-settings');
+
+  if (!container) return;
+
+  const lines = getProcessLines();
+
+  if (lines.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <p>尚未建立 LINE 資料</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = lines.map(line => {
+    const setting = getCapacityLineSetting(line);
+
+    return `
+    <details class="card" style="margin-top:1rem">
+
+      <summary style="cursor:pointer; font-weight:700">
+        ${esc(line)} LINE
+      </summary>
+
+      <div style="margin-top:1rem">
+
+        <div class="form-group">
+          <label>出勤天數</label>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value="${setting.attendanceDays}"
+            data-line="${esc(line)}"
+            data-field="attendanceDays">
+        </div>
+
+        <h4 style="margin-top:1rem">班別設定</h4>
+
+        <label>
+          <input
+            type="checkbox"
+            data-line="${esc(line)}"
+            data-field="morningEnabled"
+            ${setting.morningEnabled ? 'checked' : ''}>
+          早班
+        </label>
+
+        <div style="margin:0.5rem 0 1rem 1.5rem">
+          班別時間
+          <input
+            type="number"
+            value="${setting.morningHours}"
+            step="0.5"
+            data-line="${esc(line)}"
+            data-field="morningHours">
+          hr
+
+          休息
+          <input
+            type="number"
+            value="${setting.morningBreak}"
+            data-line="${esc(line)}"
+            data-field="morningBreak">
+          min
+
+          午餐
+          <input
+            type="number"
+            value="${setting.morningMeal}"
+            data-line="${esc(line)}"
+            data-field="morningMeal">
+          min
+        </div>
+
+
+        <label>
+          <input
+            type="checkbox"
+            data-line="${esc(line)}"
+            data-field="eveningEnabled"
+            ${setting.eveningEnabled ? 'checked' : ''}>
+          中班
+        </label>
+
+        <div style="margin:0.5rem 0 1rem 1.5rem">
+          班別時間
+          <input
+            type="number"
+            value="${setting.eveningHours}"
+            step="0.5"
+            data-line="${esc(line)}"
+            data-field="eveningHours">
+          hr
+
+          用餐
+          <input
+            type="number"
+            value="${setting.eveningMeal}"
+            data-line="${esc(line)}"
+            data-field="eveningMeal">
+          min
+
+          休息
+          <input
+            type="number"
+            value="${setting.eveningBreak}"
+            data-line="${esc(line)}"
+            data-field="eveningBreak">
+          min
+        </div>
+
+
+        <label>
+          <input
+            type="checkbox"
+            data-line="${esc(line)}"
+            data-field="nightEnabled"
+            ${setting.nightEnabled ? 'checked' : ''}>
+          大夜
+        </label>
+
+        <div style="margin:0.5rem 0 1rem 1.5rem">
+          班別時間
+          <input
+            type="number"
+            value="${setting.nightHours}"
+            step="0.5"
+            data-line="${esc(line)}"
+            data-field="nightHours">
+          hr
+
+          休息
+          <input
+            type="number"
+            value="${setting.nightBreak}"
+            data-line="${esc(line)}"
+            data-field="nightBreak">
+          min
+        </div>
+        <button
+          class="btn btn-primary"
+          style="margin-top:1rem"
+          data-line="${esc(line)}"
+          onclick="saveCapacityLineSetting(this)">
+          儲存設定
+        </button>
+
+      </div>
+
+    </details>
+    `;
+  }).join('');
+} // renderCapacityLineSettings 結束
+
+function saveCapacityLineSetting(button) {
+  const line = button.dataset.line;
+  const card = button.closest('details');
+
+  const settings = loadCapacitySettings();
+
+  settings[line] = {
+    attendanceDays: Number(
+      card.querySelector('[data-field="attendanceDays"]').value
+    ),
+
+    morningEnabled:
+      card.querySelector('[data-field="morningEnabled"]').checked,
+
+    morningHours: Number(
+      card.querySelector('[data-field="morningHours"]').value
+    ),
+
+    morningBreak: Number(
+      card.querySelector('[data-field="morningBreak"]').value
+    ),
+
+    morningMeal: Number(
+      card.querySelector('[data-field="morningMeal"]').value
+    ),
+
+    eveningEnabled:
+      card.querySelector('[data-field="eveningEnabled"]').checked,
+
+    eveningHours: Number(
+      card.querySelector('[data-field="eveningHours"]').value
+    ),
+
+    eveningMeal: Number(
+      card.querySelector('[data-field="eveningMeal"]').value
+    ),
+
+    eveningBreak: Number(
+      card.querySelector('[data-field="eveningBreak"]').value
+    ),
+
+    nightEnabled:
+      card.querySelector('[data-field="nightEnabled"]').checked,
+
+    nightHours: Number(
+      card.querySelector('[data-field="nightHours"]').value
+    ),
+
+    nightBreak: Number(
+      card.querySelector('[data-field="nightBreak"]').value
+    )
+  };
+
+  saveCapacitySettings(settings);
+
+  toast(`${line} LINE 設定已儲存`, 'success');
+} // saveCapacityLineSetting 結束
+
 // ===== TAB =====
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -70,6 +322,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (btn.dataset.tab === 'part-lines') renderPartLineSettings();
     if (btn.dataset.tab === 'equipment') renderEquipmentMaster();
     if (btn.dataset.tab === 'machine-time') renderMachineRequiredTime();
+    if (btn.dataset.tab === 'capacity') renderCapacityLineSettings();
     if (btn.dataset.tab === 'result') renderResult();
   });
 });
