@@ -1,30 +1,31 @@
 // ===== CONSTANTS =====
-const BOM_KEY  = 'k1_bom_data';
+const BOM_KEY = 'k1_bom_data';
 const PLAN_KEY = 'k1_production_plan';
 const PENDING_KEY = 'k1_pending_bom';
 const DAILY_PLAN_KEY = 'k1_daily_production_plan';
 const PART_LINE_KEY = 'k1_part_lines';
 const PART_OPS_KEY = 'k1_part_operations';
+const EQUIPMENT_KEY = 'k1_equipment_master';
 const PART_TYPES = ['L CASE', 'R CASE', 'L COVER', 'R COVER', 'M CASE', 'UPPER CASE', 'BED CASE'];
-const PROCESS_LINES = [ 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I1', 'I2', 'O', 'P', 'Q', 'R', 'S'];
+const PROCESS_LINES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I1', 'I2', 'O', 'P', 'Q', 'R', 'S'];
 
 const PART_TAG_CLASS = {
-  'L CASE':    'tag-lcase',
-  'R CASE':    'tag-rcase',
-  'L COVER':   'tag-lcover',
-  'R COVER':   'tag-rcover',
-  'M CASE':    'tag-mcase',
-  'UPPER CASE':'tag-upper',
-  'BED CASE':  'tag-bed',
+  'L CASE': 'tag-lcase',
+  'R CASE': 'tag-rcase',
+  'L COVER': 'tag-lcover',
+  'R COVER': 'tag-rcover',
+  'M CASE': 'tag-mcase',
+  'UPPER CASE': 'tag-upper',
+  'BED CASE': 'tag-bed',
 };
 
 // ===== STORAGE =====
-function loadBOM()   { return JSON.parse(localStorage.getItem(BOM_KEY)  || '{}'); }
-function saveBOM(d)  { localStorage.setItem(BOM_KEY,  JSON.stringify(d)); }
-function loadPlan()  { return JSON.parse(localStorage.getItem(PLAN_KEY) || '[]'); }
+function loadBOM() { return JSON.parse(localStorage.getItem(BOM_KEY) || '{}'); }
+function saveBOM(d) { localStorage.setItem(BOM_KEY, JSON.stringify(d)); }
+function loadPlan() { return JSON.parse(localStorage.getItem(PLAN_KEY) || '[]'); }
 function savePlan(d) { localStorage.setItem(PLAN_KEY, JSON.stringify(d)); }
-function loadPending() { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');}
-function savePending(d) { localStorage.setItem(PENDING_KEY, JSON.stringify(d));}
+function loadPending() { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); }
+function savePending(d) { localStorage.setItem(PENDING_KEY, JSON.stringify(d)); }
 function loadDailyPlan() { return JSON.parse(localStorage.getItem(DAILY_PLAN_KEY) || '{}'); }
 function saveDailyPlan(d) { localStorage.setItem(DAILY_PLAN_KEY, JSON.stringify(d)); }
 function loadPartLines() { return JSON.parse(localStorage.getItem(PART_LINE_KEY) || '{}'); }
@@ -32,6 +33,14 @@ function savePartLines(d) { localStorage.setItem(PART_LINE_KEY, JSON.stringify(d
 
 function loadPartOperations() { return JSON.parse(localStorage.getItem(PART_OPS_KEY) || '{}'); }
 function savePartOperations(d) { localStorage.setItem(PART_OPS_KEY, JSON.stringify(d)); }
+
+function loadEquipmentMaster() {
+  return JSON.parse(localStorage.getItem(EQUIPMENT_KEY) || '[]');
+}
+
+function saveEquipmentMaster(d) {
+  localStorage.setItem(EQUIPMENT_KEY, JSON.stringify(d));
+}
 
 // ===== TAB =====
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -42,6 +51,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'daily') renderDailyParts();
     if (btn.dataset.tab === 'part-lines') renderPartLineSettings();
+    if (btn.dataset.tab === 'equipment') renderEquipmentMaster();
     if (btn.dataset.tab === 'machine-time') renderMachineRequiredTime();
     if (btn.dataset.tab === 'result') renderResult();
   });
@@ -50,26 +60,26 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ===== BOM TAB =====
 function renderBOM() {
   const bom = loadBOM();
-const allKeys = Object.keys(bom);
-const keyword = (document.getElementById('bom-search-input')?.value || '').trim().toUpperCase();
+  const allKeys = Object.keys(bom);
+  const keyword = (document.getElementById('bom-search-input')?.value || '').trim().toUpperCase();
 
-const keys = allKeys.filter(model => {
-  const row = bom[model];
+  const keys = allKeys.filter(model => {
+    const row = bom[model];
 
-  if (!keyword) return true;
-  if (model.toUpperCase().includes(keyword)) return true;
+    if (!keyword) return true;
+    if (model.toUpperCase().includes(keyword)) return true;
 
-  return PART_TYPES.some(pt =>
-    String(row[pt] || '').toUpperCase().includes(keyword)
-  );
-});
+    return PART_TYPES.some(pt =>
+      String(row[pt] || '').toUpperCase().includes(keyword)
+    );
+  });
   const tbody = document.getElementById('bom-tbody');
   const empty = document.getElementById('bom-empty');
   const countEl = document.getElementById('bom-count');
 
   countEl.textContent = keyword
-  ? `${keys.length} / ${allKeys.length} 筆機種`
-  : `${allKeys.length} 筆機種`;
+    ? `${keys.length} / ${allKeys.length} 筆機種`
+    : `${allKeys.length} 筆機種`;
 
   if (keys.length === 0) {
     tbody.innerHTML = '';
@@ -157,37 +167,37 @@ function saveModal() {
 
   const isEditing = Boolean(editingModel);
 
-bom[model] = row;
-saveBOM(bom);
+  bom[model] = row;
+  saveBOM(bom);
 
-const pending = loadPending();
-const pendingItem = pending.find(item => item.model === model);
+  const pending = loadPending();
+  const pendingItem = pending.find(item => item.model === model);
 
-if (pendingItem) {
-  const plan = loadPlan();
-  const existing = plan.find(item => item.model === model);
+  if (pendingItem) {
+    const plan = loadPlan();
+    const existing = plan.find(item => item.model === model);
 
-  if (existing) {
-    existing.qty += pendingItem.qty;
-  } else {
-    plan.push({ model, qty: pendingItem.qty });
+    if (existing) {
+      existing.qty += pendingItem.qty;
+    } else {
+      plan.push({ model, qty: pendingItem.qty });
+    }
+
+    savePlan(plan);
+    savePending(pending.filter(item => item.model !== model));
   }
 
-  savePlan(plan);
-  savePending(pending.filter(item => item.model !== model));
-}
+  closeModal();
+  renderBOM();
+  renderPlan();
+  renderPending();
+  refreshPlanSelect();
 
-closeModal();
-renderBOM();
-renderPlan();
-renderPending();
-refreshPlanSelect();
-
-if (pendingItem) {
-  toast(`已建立 ${model}，並加入生產計畫 ${pendingItem.qty} 台`, 'success');
-} else {
-  toast((isEditing ? '已更新 ' : '已新增 ') + model, 'success');
-}
+  if (pendingItem) {
+    toast(`已建立 ${model}，並加入生產計畫 ${pendingItem.qty} 台`, 'success');
+  } else {
+    toast((isEditing ? '已更新 ' : '已新增 ') + model, 'success');
+  }
 }
 
 // close on overlay click
@@ -197,8 +207,8 @@ document.getElementById('modal-overlay').addEventListener('click', e => {
 
 // ===== PRODUCTION TAB =====
 function refreshPlanSelect() {
-  const bom  = loadBOM();
-  const sel  = document.getElementById('plan-model-select');
+  const bom = loadBOM();
+  const sel = document.getElementById('plan-model-select');
   const keys = Object.keys(bom);
   sel.innerHTML = '<option value="">-- 選擇機種代號 --</option>' +
     keys.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('');
@@ -206,7 +216,7 @@ function refreshPlanSelect() {
 
 function addPlanItem() {
   const model = document.getElementById('plan-model-select').value;
-  const qty   = parseInt(document.getElementById('plan-qty').value, 10);
+  const qty = parseInt(document.getElementById('plan-qty').value, 10);
 
   if (!model) { toast('請選擇機種代號', 'error'); return; }
   if (!qty || qty <= 0) { toast('請輸入有效數量', 'error'); return; }
@@ -250,8 +260,8 @@ function clearPlan() {
 
 function renderPlan() {
   const plan = loadPlan();
-  const el   = document.getElementById('plan-list');
-  const empty= document.getElementById('plan-empty');
+  const el = document.getElementById('plan-list');
+  const empty = document.getElementById('plan-empty');
   const countEl = document.getElementById('plan-count');
 
   const total = plan.reduce((s, p) => s + p.qty, 0);
@@ -312,6 +322,182 @@ function openPendingBOM(model) {
 } // openPendingBOM 結束
 
 // ===== DAILY PARTS PLAN =====
+function renderEquipmentMaster() {
+  const data = loadEquipmentMaster();
+
+  const tbody = document.getElementById('equipment-tbody');
+  const empty = document.getElementById('equipment-empty');
+  const summary = document.getElementById('equipment-summary');
+
+  const criticalCount = data.filter(item => item.critical).length;
+
+  summary.textContent =
+    `共 ${data.length} 台設備｜關鍵設備 ${criticalCount} 台`;
+
+  if (data.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+
+  empty.style.display = 'none';
+
+  tbody.innerHTML = data.map(item => `
+    <tr>
+      <td>
+        <span class="part-code">${esc(item.machine)}</span>
+      </td>
+
+      <td>${esc(item.line)} LINE</td>
+
+      <td>${item.critical ? '✅ 是' : '— 否'}</td>
+
+      <td>
+        <button
+          class="btn btn-danger btn-sm"
+          data-machine="${esc(item.machine)}"
+          onclick="deleteEquipment(this.dataset.machine)">
+          刪除
+        </button>
+      </td>
+    </tr>
+  `).join('');
+} // renderEquipmentMaster 結束
+
+
+function addEquipment() {
+  const tbody = document.getElementById('equipment-tbody');
+  const empty = document.getElementById('equipment-empty');
+
+  empty.style.display = 'none';
+
+  if (tbody.querySelector('[data-new-equipment]')) return;
+
+  tbody.insertAdjacentHTML('afterbegin', `
+    <tr data-new-equipment="true">
+
+      <td>
+  <input
+    type="text"
+    data-field="machine"
+    placeholder="1530-003166">
+</td>
+
+<td>
+  <input
+    type="text"
+    data-field="name"
+    placeholder="例：OKK HM500S">
+</td>
+
+<td>
+  <input
+    type="text"
+    data-field="department"
+    placeholder="例：M3">
+</td>
+
+<td>
+  <select data-field="line">
+          <option value="">選擇 LINE</option>
+
+          ${PROCESS_LINES.map(line => `
+            <option value="${line}">
+              ${line} LINE
+            </option>
+          `).join('')}
+        </select>
+      </td>
+
+      <td>
+        <input
+          type="checkbox"
+          data-field="critical"
+          checked>
+      </td>
+
+      <td>
+        <button
+          class="btn btn-primary btn-sm"
+          onclick="saveNewEquipment(this)">
+          儲存
+        </button>
+
+        <button
+          class="btn btn-secondary btn-sm"
+          onclick="renderEquipmentMaster()">
+          取消
+        </button>
+      </td>
+
+    </tr>
+  `);
+} // addEquipment 結束
+
+
+function saveNewEquipment(button) {
+  const row = button.closest('tr');
+
+  const machine =
+    row.querySelector('[data-field="machine"]').value
+      .trim()
+      .toUpperCase();
+
+  const name =
+    row.querySelector('[data-field="name"]').value
+      .trim();
+
+  const department =
+    row.querySelector('[data-field="department"]').value
+      .trim()
+      .toUpperCase();
+
+  const line =
+    row.querySelector('[data-field="line"]').value;
+
+  const critical =
+    row.querySelector('[data-field="critical"]').checked;
+
+  if (!machine || !line) {
+    toast('請輸入管理編號並選擇加工線', 'error');
+    return;
+  }
+
+  const data = loadEquipmentMaster();
+
+  if (!machine || !name || !department || !line) {
+    toast('請完整輸入管理編號、設備名稱、所屬部門與加工線', 'error');
+    return;
+  }
+
+  data.push({
+    machine,
+    name,
+    department,
+    line,
+    critical
+  });
+
+  saveEquipmentMaster(data);
+  renderEquipmentMaster();
+
+  toast('已新增設備', 'success');
+} // saveNewEquipment 結束
+
+
+function deleteEquipment(machine) {
+  if (!confirm(`確定刪除設備「${machine}」？`)) return;
+
+  const data =
+    loadEquipmentMaster()
+      .filter(item => item.machine !== machine);
+
+  saveEquipmentMaster(data);
+  renderEquipmentMaster();
+
+  toast('已刪除設備', 'success');
+} // deleteEquipment 結束
+
 function calculateMachineRequiredTime() {
   const dailyParts = calculateDailyParts();
   const partOperations = loadPartOperations();
@@ -450,9 +636,9 @@ function renderPartLineSettings() {
   summary.textContent = `共 ${data.length} 筆部品`;
 
   tbody.innerHTML = data.map(item => {
-  const operations = partOperations[item.code] || [];
+    const operations = partOperations[item.code] || [];
 
-  return `
+    return `
     <tr>
       <td>
         <span class="part-code">${esc(item.code)}</span>
@@ -486,7 +672,7 @@ function renderPartLineSettings() {
       </td>
     </tr>
   `;
-}).join('');
+  }).join('');
 } // renderPartLineSettings 結束
 
 let editingPartCode = null;
@@ -639,36 +825,36 @@ function renderDailyParts() {
   const dailyPlan = loadDailyPlan();
   const partLines = loadPartLines();
   const dates = Object.keys(dailyPlan).sort();
-  const data = calculateDailyParts();  
+  const data = calculateDailyParts();
   const filterEl = document.getElementById('daily-line-filter');
-const selectedLine = filterEl ? filterEl.value : '';
+  const selectedLine = filterEl ? filterEl.value : '';
 
-if (filterEl) {
-  filterEl.innerHTML =
-    '<option value="">全部加工線</option>' +
-    PROCESS_LINES.map(line => `
+  if (filterEl) {
+    filterEl.innerHTML =
+      '<option value="">全部加工線</option>' +
+      PROCESS_LINES.map(line => `
       <option value="${line}">${line} LINE</option>
     `).join('');
 
-  filterEl.value = selectedLine;
-}
+    filterEl.value = selectedLine;
+  }
 
-const filteredData = selectedLine
-  ? data.filter(item => partLines[item.code] === selectedLine)
-  : data;
+  const filteredData = selectedLine
+    ? data.filter(item => partLines[item.code] === selectedLine)
+    : data;
 
-// 依加工線分組
-const groupedData = {};
+  // 依加工線分組
+  const groupedData = {};
 
-filteredData.forEach(item => {
-  const line = partLines[item.code] || 'UNASSIGNED';
+  filteredData.forEach(item => {
+    const line = partLines[item.code] || 'UNASSIGNED';
 
-  if (!groupedData[line]) groupedData[line] = [];
+    if (!groupedData[line]) groupedData[line] = [];
 
-  groupedData[line].push(item);
-});
+    groupedData[line].push(item);
+  });
 
-const groupOrder = [...PROCESS_LINES, 'UNASSIGNED'];
+  const groupOrder = [...PROCESS_LINES, 'UNASSIGNED'];
 
   const thead = document.getElementById('daily-parts-thead');
   const tbody = document.getElementById('daily-parts-tbody');
@@ -695,8 +881,8 @@ const groupOrder = [...PROCESS_LINES, 'UNASSIGNED'];
       <th>部品代號</th>
       <th>總數</th>
       ${dates.map(dateKey =>
-        `<th>${formatDailyDate(dateKey)}</th>`
-      ).join('')}
+    `<th>${formatDailyDate(dateKey)}</th>`
+  ).join('')}
     </tr>
   `;
 
@@ -760,13 +946,13 @@ const groupOrder = [...PROCESS_LINES, 'UNASSIGNED'];
           <td class="qty-cell">${item.total}</td>
 
           ${dates.map(dateKey =>
-            `<td>${item.dates[dateKey] || '—'}</td>`
-          ).join('')}
+        `<td>${item.dates[dateKey] || '—'}</td>`
+      ).join('')}
         </tr>
       `).join('')}
     `;
-  })
-  .join('');
+    })
+    .join('');
 } // renderDailyParts 結束
 
 function renderMachineRequiredTime() {
@@ -777,9 +963,18 @@ function renderMachineRequiredTime() {
   const summary = document.getElementById('machine-time-summary');
 
   if (data.length === 0) {
+    const dailyParts = calculateDailyParts();
+
     tbody.innerHTML = '';
     empty.style.display = 'block';
-    summary.textContent = '尚無設備需求資料';
+
+    if (dailyParts.length === 0) {
+      summary.textContent = '尚無每日部品資料';
+    } else {
+      summary.textContent =
+        '已有每日部品，但尚未配對到 OP／NT';
+    }
+
     return;
   }
 
@@ -822,7 +1017,7 @@ function renderMachineRequiredTime() {
 
 // ===== RESULT TAB =====
 function calculate() {
-  const bom  = loadBOM();
+  const bom = loadBOM();
   const plan = loadPlan();
   // result: partCode -> { type, code, qty, models[] }
   const result = {};
@@ -844,21 +1039,21 @@ function calculate() {
 }
 
 function renderResult() {
-  const data  = calculate();
+  const data = calculate();
   const tbody = document.getElementById('result-tbody');
   const empty = document.getElementById('result-empty');
-  const plan  = loadPlan();
+  const plan = loadPlan();
 
   // stats
   const totalModels = plan.length;
-  const totalUnits  = plan.reduce((s, p) => s + p.qty, 0);
-  const totalParts  = data.length;
-  const totalQty    = data.reduce((s, d) => s + d.qty, 0);
+  const totalUnits = plan.reduce((s, p) => s + p.qty, 0);
+  const totalParts = data.length;
+  const totalQty = data.reduce((s, d) => s + d.qty, 0);
 
   document.getElementById('stat-models').textContent = totalModels;
-  document.getElementById('stat-units').textContent  = totalUnits;
-  document.getElementById('stat-parts').textContent  = totalParts;
-  document.getElementById('stat-qty').textContent    = totalQty;
+  document.getElementById('stat-units').textContent = totalUnits;
+  document.getElementById('stat-parts').textContent = totalParts;
+  document.getElementById('stat-qty').textContent = totalQty;
 
   if (data.length === 0) {
     tbody.innerHTML = '';
@@ -890,9 +1085,9 @@ function exportCSV() {
   ).join('\n');
 
   const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
   a.download = `K1_加工數彙總_${dateStr}.csv`;
   document.body.appendChild(a);
   a.click();
@@ -914,10 +1109,10 @@ function toast(msg, type = 'success') {
 // ===== UTILS =====
 function esc(str) {
   return String(str)
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 function buildDateColumns(headerRow) {
   const columns = {};
@@ -1000,12 +1195,12 @@ async function importExcel() {
     });
 
     const normalizeModel = value =>
-  String(value)
-    .trim()
-    .replace(/^\*+|\*+$/g, '')
-    .trim()
-    .toUpperCase()
-    .replace(/\s*\([A-Z]{2,3}\)\s*$/, '');
+      String(value)
+        .trim()
+        .replace(/^\*+|\*+$/g, '')
+        .trim()
+        .toUpperCase()
+        .replace(/\s*\([A-Z]{2,3}\)\s*$/, '');
 
     const dailyPlan = {};
     let dateColumns = {};
@@ -1014,10 +1209,10 @@ async function importExcel() {
     rows.forEach(row => {
       const isHeader = String(row[1] || '').trim().toUpperCase() === 'NO';
 
-  if (isHeader) {
-    dateColumns = buildDateColumns(row);
-    return;
-  } // 日期表頭處理結束
+      if (isHeader) {
+        dateColumns = buildDateColumns(row);
+        return;
+      } // 日期表頭處理結束
       const no = Number(row[1]);       // B 欄：NO
       const rawModel = row[2];         // C 欄：機種
       const qty = Number(row[5]);      // F 欄：台數
@@ -1031,11 +1226,11 @@ async function importExcel() {
 
       if (!model) return;
       Object.entries(dateColumns).forEach(([col, dateKey]) => {
-      const dailyQty = Number(row[Number(col)]);
-      if (!Number.isFinite(dailyQty) || dailyQty <= 0) return;
+        const dailyQty = Number(row[Number(col)]);
+        if (!Number.isFinite(dailyQty) || dailyQty <= 0) return;
 
-      if (!dailyPlan[dateKey]) dailyPlan[dateKey] = {};
-      dailyPlan[dateKey][model] = (dailyPlan[dateKey][model] || 0) + Math.trunc(dailyQty);
+        if (!dailyPlan[dateKey]) dailyPlan[dateKey] = {};
+        dailyPlan[dateKey][model] = (dailyPlan[dateKey][model] || 0) + Math.trunc(dailyQty);
       }); // 每日數量加總結束
 
       // 同機種自動加總
@@ -1061,7 +1256,7 @@ async function importExcel() {
       const bomModel = bomLookup[excelModel];
 
       if (!bomModel) {
-        pendingModels.push({model: excelModel,qty});
+        pendingModels.push({ model: excelModel, qty });
         return;
       }
 
@@ -1072,7 +1267,7 @@ async function importExcel() {
     });
 
     const missingModels = pendingModels.map(item => item.model);
-    
+
     savePending(pendingModels);
     renderPending();
     if (newPlan.length === 0) {
