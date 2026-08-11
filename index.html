@@ -251,9 +251,24 @@
           <p id="equipment-summary">管理各加工線設備</p>
         </div>
 
-        <button class="btn btn-primary" onclick="addEquipment()">
-          ＋ 新增設備
-        </button>
+        <div style="display:flex; gap:0.5rem; align-items:center">
+
+          <input type="file" id="equipment-excel-file" accept=".xlsx,.xls" style="display:none"
+            onchange="importEquipmentMaster()">
+
+          <button class="btn btn-secondary" onclick="document.getElementById('equipment-excel-file').click()">
+            📥 主檔轉入
+          </button>
+
+          <button class="btn btn-success" onclick="exportEquipmentMaster()">
+            📤 主檔轉出
+          </button>
+
+          <button class="btn btn-primary" onclick="addEquipment()">
+            ＋ 新增設備
+          </button>
+
+        </div>
       </div>
 
       <div class="card">
