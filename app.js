@@ -42,6 +42,23 @@ function saveEquipmentMaster(d) {
   localStorage.setItem(EQUIPMENT_KEY, JSON.stringify(d));
 }
 
+function getProcessLines() {
+  const equipment = loadEquipmentMaster();
+
+  const equipmentLines = equipment
+    .map(item =>
+      String(item.line || '')
+        .trim()
+        .replace(/\s*LINE$/i, '')
+    )
+    .filter(Boolean);
+
+  return [...new Set([
+    ...PROCESS_LINES,
+    ...equipmentLines
+  ])];
+} // getProcessLines 結束
+
 // ===== TAB =====
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -537,7 +554,7 @@ function addEquipment() {
   <select data-field="line">
           <option value="">選擇 LINE</option>
 
-          ${PROCESS_LINES.map(line => `
+          ${getProcessLines().map(line => `
             <option value="${line}">
               ${line} LINE
             </option>
@@ -788,7 +805,7 @@ function renderPartLineSettings() {
         >
         <option value="">未設定</option>
 
-        ${PROCESS_LINES.map(line => `
+        ${getProcessLines().map(line => `
         <option
           value="${line}"
           ${partLines[item.code] === line ? 'selected' : ''}>
@@ -968,7 +985,7 @@ function renderDailyParts() {
   if (filterEl) {
     filterEl.innerHTML =
       '<option value="">全部加工線</option>' +
-      PROCESS_LINES.map(line => `
+      getProcessLines().map(line => `
       <option value="${line}">${line} LINE</option>
     `).join('');
 
@@ -990,7 +1007,7 @@ function renderDailyParts() {
     groupedData[line].push(item);
   });
 
-  const groupOrder = [...PROCESS_LINES, 'UNASSIGNED'];
+  const groupOrder = [...getProcessLines(), 'UNASSIGNED'];
 
   const thead = document.getElementById('daily-parts-thead');
   const tbody = document.getElementById('daily-parts-tbody');
@@ -1059,7 +1076,7 @@ function renderDailyParts() {
               >
                 <option value="">未設定</option>
 
-                ${PROCESS_LINES.map(optionLine => `
+                ${getProcessLines().map(optionLine => `
                   <option
                     value="${optionLine}"
                     ${partLines[item.code] === optionLine ? 'selected' : ''}>
