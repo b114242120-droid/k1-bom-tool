@@ -42,6 +42,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'daily') renderDailyParts();
     if (btn.dataset.tab === 'part-lines') renderPartLineSettings();
+    if (btn.dataset.tab === 'machine-time') renderMachineRequiredTime();
     if (btn.dataset.tab === 'result') renderResult();
   });
 });
@@ -311,6 +312,43 @@ function openPendingBOM(model) {
 } // openPendingBOM 結束
 
 // ===== DAILY PARTS PLAN =====
+function calculateMachineRequiredTime() {
+  const dailyParts = calculateDailyParts();
+  const partOperations = loadPartOperations();
+  const partLines = loadPartLines();
+  const result = [];
+
+  dailyParts.forEach(part => {
+    const operations = partOperations[part.code] || [];
+
+    Object.entries(part.dates).forEach(([dateKey, qty]) => {
+      operations.forEach(operation => {
+        const requiredSeconds = qty * operation.nt;
+
+        result.push({
+          date: dateKey,
+          line: partLines[part.code] || '',
+          partCode: part.code,
+          partType: part.type,
+          op: operation.op,
+          machine: operation.machine,
+          nt: operation.nt,
+          qty,
+          requiredSeconds,
+          requiredMinutes: requiredSeconds / 60,
+          requiredHours: requiredSeconds / 3600
+        });
+      });
+    });
+  });
+
+  return result.sort((a, b) =>
+    a.date.localeCompare(b.date) ||
+    a.line.localeCompare(b.line) ||
+    a.partCode.localeCompare(b.partCode) ||
+    a.op.localeCompare(b.op)
+  );
+} // calculateMachineRequiredTime 結束
 function calculateDailyParts() {
   const dailyPlan = loadDailyPlan();
   const bom = loadBOM();
@@ -730,6 +768,57 @@ const groupOrder = [...PROCESS_LINES, 'UNASSIGNED'];
   })
   .join('');
 } // renderDailyParts 結束
+
+function renderMachineRequiredTime() {
+  const data = calculateMachineRequiredTime();
+
+  const tbody = document.getElementById('machine-time-tbody');
+  const empty = document.getElementById('machine-time-empty');
+  const summary = document.getElementById('machine-time-summary');
+
+  if (data.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    summary.textContent = '尚無設備需求資料';
+    return;
+  }
+
+  empty.style.display = 'none';
+
+  const totalHours = data.reduce(
+    (sum, item) => sum + item.requiredHours,
+    0
+  );
+
+  summary.textContent =
+    `${data.length} 筆設備需求｜共 ${totalHours.toFixed(1)} 小時`;
+
+  tbody.innerHTML = data.map(item => `
+    <tr>
+      <td>${formatDailyDate(item.date)}</td>
+
+      <td>
+        ${item.line ? `${esc(item.line)} LINE` : '⚠️ 未設定'}
+      </td>
+
+      <td>
+        <span class="part-code">${esc(item.partCode)}</span>
+      </td>
+
+      <td>${esc(item.op)}</td>
+
+      <td>${esc(item.machine)}</td>
+
+      <td class="qty-cell">${item.qty}</td>
+
+      <td>${item.nt}</td>
+
+      <td>${item.requiredMinutes.toFixed(1)}</td>
+
+      <td>${item.requiredHours.toFixed(2)}</td>
+    </tr>
+  `).join('');
+} // renderMachineRequiredTime 結束
 
 // ===== RESULT TAB =====
 function calculate() {
