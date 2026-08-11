@@ -374,13 +374,20 @@ function renderEquipmentMaster() {
     <td>${item.critical ? '✅ 是' : '— 否'}</td>
 
     <td>
-      <button
-        class="btn btn-danger btn-sm"
-        data-machine="${esc(item.machine)}"
-        onclick="deleteEquipment(this.dataset.machine)">
-        刪除
-      </button>
-    </td>
+  <button
+    class="btn btn-secondary btn-sm"
+    data-machine="${esc(item.machine)}"
+    onclick="editEquipment(this)">
+    編輯
+  </button>
+
+  <button
+    class="btn btn-danger btn-sm"
+    data-machine="${esc(item.machine)}"
+    onclick="deleteEquipment(this.dataset.machine)">
+    刪除
+  </button>
+</td>
   </tr>
 `).join('');
 } // renderEquipmentMaster 結束
@@ -637,6 +644,114 @@ function saveNewEquipment(button) {
   toast('已新增設備', 'success');
 } // saveNewEquipment 結束
 
+function editEquipment(button) {
+  const machine = button.dataset.machine;
+  const data = loadEquipmentMaster();
+
+  const item = data.find(
+    equipment => equipment.machine === machine
+  );
+
+  if (!item) return;
+
+  const row = button.closest('tr');
+
+  row.innerHTML = `
+    <td>
+      <span class="part-code">${esc(item.machine)}</span>
+    </td>
+
+    <td>
+      <input
+        type="text"
+        data-field="name"
+        value="${esc(item.name || '')}">
+    </td>
+
+    <td>
+      <input
+        type="text"
+        data-field="department"
+        value="${esc(item.department || '')}">
+    </td>
+
+    <td>
+      <select data-field="line">
+        ${getProcessLines().map(line => `
+          <option
+            value="${line}"
+            ${item.line === line ? 'selected' : ''}>
+            ${line} LINE
+          </option>
+        `).join('')}
+      </select>
+    </td>
+
+    <td>
+      <input
+        type="checkbox"
+        data-field="critical"
+        ${item.critical ? 'checked' : ''}>
+    </td>
+
+    <td>
+      <button
+        class="btn btn-primary btn-sm"
+        data-machine="${esc(item.machine)}"
+        onclick="saveEquipmentEdit(this)">
+        儲存
+      </button>
+
+      <button
+        class="btn btn-secondary btn-sm"
+        onclick="renderEquipmentMaster()">
+        取消
+      </button>
+    </td>
+  `;
+} // editEquipment 結束
+
+function saveEquipmentEdit(button) {
+  const machine = button.dataset.machine;
+  const row = button.closest('tr');
+
+  const name =
+    row.querySelector('[data-field="name"]').value.trim();
+
+  const department =
+    row.querySelector('[data-field="department"]').value
+      .trim()
+      .toUpperCase();
+
+  const line =
+    row.querySelector('[data-field="line"]').value;
+
+  const critical =
+    row.querySelector('[data-field="critical"]').checked;
+
+  if (!name || !department || !line) {
+    toast('請完整輸入設備名稱、所屬部門與線別', 'error');
+    return;
+  }
+
+  const data = loadEquipmentMaster();
+
+  const item = data.find(
+    equipment => equipment.machine === machine
+  );
+
+  if (!item) return;
+
+  item.name = name;
+  item.department = department;
+  item.line = line;
+  item.critical = critical;
+
+  saveEquipmentMaster(data);
+  renderEquipmentMaster();
+
+  toast('設備資料已更新', 'success');
+} // saveEquipmentEdit 結束
 
 function deleteEquipment(machine) {
   if (!confirm(`確定刪除設備「${machine}」？`)) return;
