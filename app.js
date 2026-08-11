@@ -42,6 +42,23 @@ function saveEquipmentMaster(d) {
   localStorage.setItem(EQUIPMENT_KEY, JSON.stringify(d));
 }
 
+function getProcessLines() {
+  const equipment = loadEquipmentMaster();
+
+  const equipmentLines = equipment
+    .map(item =>
+      String(item.line || '')
+        .trim()
+        .replace(/\s*LINE$/i, '')
+    )
+    .filter(Boolean);
+
+  return [...new Set([
+    ...PROCESS_LINES,
+    ...equipmentLines
+  ])];
+} // getProcessLines 結束
+
 // ===== TAB =====
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -343,27 +360,170 @@ function renderEquipmentMaster() {
   empty.style.display = 'none';
 
   tbody.innerHTML = data.map(item => `
-    <tr>
-      <td>
-        <span class="part-code">${esc(item.machine)}</span>
-      </td>
+  <tr>
+    <td>
+      <span class="part-code">${esc(item.machine)}</span>
+    </td>
 
-      <td>${esc(item.line)} LINE</td>
+    <td>${esc(item.name || '—')}</td>
 
-      <td>${item.critical ? '✅ 是' : '— 否'}</td>
+    <td>${esc(item.department || '—')}</td>
 
-      <td>
-        <button
-          class="btn btn-danger btn-sm"
-          data-machine="${esc(item.machine)}"
-          onclick="deleteEquipment(this.dataset.machine)">
-          刪除
-        </button>
-      </td>
-    </tr>
-  `).join('');
+    <td>${esc(item.line || '—')} LINE</td>
+
+    <td>${item.critical ? '✅ 是' : '— 否'}</td>
+
+    <td>
+  <button
+    class="btn btn-secondary btn-sm"
+    data-machine="${esc(item.machine)}"
+    onclick="editEquipment(this)">
+    編輯
+  </button>
+
+  <button
+    class="btn btn-danger btn-sm"
+    data-machine="${esc(item.machine)}"
+    onclick="deleteEquipment(this.dataset.machine)">
+    刪除
+  </button>
+</td>
+  </tr>
+`).join('');
 } // renderEquipmentMaster 結束
 
+function exportEquipmentMaster() {
+  const data = loadEquipmentMaster();
+
+  if (data.length === 0) {
+    toast('尚無設備主檔可轉出', 'error');
+    return;
+  }
+
+  const rows = data.map(item => ({
+    管理編號: item.machine || '',
+    設備名稱: item.name || '',
+    所屬部門: item.department || '',
+    所屬LINE: item.line || '',
+    關鍵設備: item.critical ? '是' : '否'
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    '設備主檔'
+  );
+
+  XLSX.writeFile(
+    workbook,
+    '設備主檔.xlsx'
+  );
+
+  toast('設備主檔已轉出', 'success');
+} // exportEquipmentMaster 結束
+
+async function importEquipmentMaster() {
+  const fileInput =
+    document.getElementById('equipment-excel-file');
+
+  const file = fileInput.files[0];
+
+  if (!file) return;
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+
+    const workbook = XLSX.read(arrayBuffer, {
+      type: 'array'
+    });
+
+    const worksheet =
+      workbook.Sheets[workbook.SheetNames[0]];
+
+    const rows = XLSX.utils.sheet_to_json(
+      worksheet,
+      { defval: '' }
+    );
+
+    const equipment = loadEquipmentMaster();
+
+    rows.forEach(row => {
+      const machine =
+        String(row['管理編號'] || '')
+          .trim()
+          .toUpperCase();
+
+      const name =
+        String(row['設備名稱'] || '').trim();
+
+      const department =
+        String(row['所屬部門'] || '')
+          .trim()
+          .toUpperCase();
+
+      const line =
+        String(
+          row['所屬LINE'] ||
+          row['所屬 LINE'] ||
+          ''
+        )
+          .trim()
+          .toUpperCase();
+
+      const criticalText =
+        String(row['關鍵設備'] || '')
+          .trim()
+          .toUpperCase();
+
+      if (!machine) return;
+
+      const critical =
+        ['是', 'Y', 'YES', 'TRUE', '1']
+          .includes(criticalText);
+
+      const existing =
+        equipment.find(
+          item => item.machine === machine
+        );
+
+      if (existing) {
+        existing.name = name;
+        existing.department = department;
+        existing.line = line;
+        existing.critical = critical;
+      } else {
+        equipment.push({
+          machine,
+          name,
+          department,
+          line,
+          critical
+        });
+      }
+    });
+
+    saveEquipmentMaster(equipment);
+    renderEquipmentMaster();
+
+    fileInput.value = '';
+
+    toast(
+      `設備主檔轉入完成，共讀取 ${rows.length} 筆`,
+      'success'
+    );
+
+  } catch (error) {
+    console.error('設備主檔轉入失敗：', error);
+
+    toast(
+      '設備主檔轉入失敗，請確認 Excel 格式',
+      'error'
+    );
+  }
+} // importEquipmentMaster 結束
 
 function addEquipment() {
   const tbody = document.getElementById('equipment-tbody');
@@ -401,7 +561,7 @@ function addEquipment() {
   <select data-field="line">
           <option value="">選擇 LINE</option>
 
-          ${PROCESS_LINES.map(line => `
+          ${getProcessLines().map(line => `
             <option value="${line}">
               ${line} LINE
             </option>
@@ -484,6 +644,114 @@ function saveNewEquipment(button) {
   toast('已新增設備', 'success');
 } // saveNewEquipment 結束
 
+function editEquipment(button) {
+  const machine = button.dataset.machine;
+  const data = loadEquipmentMaster();
+
+  const item = data.find(
+    equipment => equipment.machine === machine
+  );
+
+  if (!item) return;
+
+  const row = button.closest('tr');
+
+  row.innerHTML = `
+    <td>
+      <span class="part-code">${esc(item.machine)}</span>
+    </td>
+
+    <td>
+      <input
+        type="text"
+        data-field="name"
+        value="${esc(item.name || '')}">
+    </td>
+
+    <td>
+      <input
+        type="text"
+        data-field="department"
+        value="${esc(item.department || '')}">
+    </td>
+
+    <td>
+      <select data-field="line">
+        ${getProcessLines().map(line => `
+          <option
+            value="${line}"
+            ${item.line === line ? 'selected' : ''}>
+            ${line} LINE
+          </option>
+        `).join('')}
+      </select>
+    </td>
+
+    <td>
+      <input
+        type="checkbox"
+        data-field="critical"
+        ${item.critical ? 'checked' : ''}>
+    </td>
+
+    <td>
+      <button
+        class="btn btn-primary btn-sm"
+        data-machine="${esc(item.machine)}"
+        onclick="saveEquipmentEdit(this)">
+        儲存
+      </button>
+
+      <button
+        class="btn btn-secondary btn-sm"
+        onclick="renderEquipmentMaster()">
+        取消
+      </button>
+    </td>
+  `;
+} // editEquipment 結束
+
+function saveEquipmentEdit(button) {
+  const machine = button.dataset.machine;
+  const row = button.closest('tr');
+
+  const name =
+    row.querySelector('[data-field="name"]').value.trim();
+
+  const department =
+    row.querySelector('[data-field="department"]').value
+      .trim()
+      .toUpperCase();
+
+  const line =
+    row.querySelector('[data-field="line"]').value;
+
+  const critical =
+    row.querySelector('[data-field="critical"]').checked;
+
+  if (!name || !department || !line) {
+    toast('請完整輸入設備名稱、所屬部門與線別', 'error');
+    return;
+  }
+
+  const data = loadEquipmentMaster();
+
+  const item = data.find(
+    equipment => equipment.machine === machine
+  );
+
+  if (!item) return;
+
+  item.name = name;
+  item.department = department;
+  item.line = line;
+  item.critical = critical;
+
+  saveEquipmentMaster(data);
+  renderEquipmentMaster();
+
+  toast('設備資料已更新', 'success');
+} // saveEquipmentEdit 結束
 
 function deleteEquipment(machine) {
   if (!confirm(`確定刪除設備「${machine}」？`)) return;
@@ -652,7 +920,7 @@ function renderPartLineSettings() {
         >
         <option value="">未設定</option>
 
-        ${PROCESS_LINES.map(line => `
+        ${getProcessLines().map(line => `
         <option
           value="${line}"
           ${partLines[item.code] === line ? 'selected' : ''}>
@@ -832,7 +1100,7 @@ function renderDailyParts() {
   if (filterEl) {
     filterEl.innerHTML =
       '<option value="">全部加工線</option>' +
-      PROCESS_LINES.map(line => `
+      getProcessLines().map(line => `
       <option value="${line}">${line} LINE</option>
     `).join('');
 
@@ -854,7 +1122,7 @@ function renderDailyParts() {
     groupedData[line].push(item);
   });
 
-  const groupOrder = [...PROCESS_LINES, 'UNASSIGNED'];
+  const groupOrder = [...getProcessLines(), 'UNASSIGNED'];
 
   const thead = document.getElementById('daily-parts-thead');
   const tbody = document.getElementById('daily-parts-tbody');
@@ -923,7 +1191,7 @@ function renderDailyParts() {
               >
                 <option value="">未設定</option>
 
-                ${PROCESS_LINES.map(optionLine => `
+                ${getProcessLines().map(optionLine => `
                   <option
                     value="${optionLine}"
                     ${partLines[item.code] === optionLine ? 'selected' : ''}>
