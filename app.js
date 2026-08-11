@@ -128,13 +128,48 @@ function renderBOM() {
 
 function deleteModel(model) {
   if (!confirm(`確定刪除機種「${model}」的 BOM 資料？`)) return;
+
   const bom = loadBOM();
+  const plan = loadPlan();
+  const pending = loadPending();
+
   delete bom[model];
   saveBOM(bom);
+
+  const planItem = plan.find(
+    item => item.model === model
+  );
+
+  if (planItem) {
+    const existingPending = pending.find(
+      item => item.model === model
+    );
+
+    if (existingPending) {
+      existingPending.qty += planItem.qty;
+    } else {
+      pending.push({
+        model,
+        qty: planItem.qty
+      });
+    }
+
+    savePlan(
+      plan.filter(item => item.model !== model)
+    );
+
+    savePending(pending);
+  }
+
   renderBOM();
+  renderPlan();
+  renderPending();
   refreshPlanSelect();
+  renderDailyParts();
+  renderResult();
+
   toast('已刪除 ' + model, 'success');
-}
+} // deleteModel 結束
 
 // ===== MODAL =====
 let editingModel = null;
