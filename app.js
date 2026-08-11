@@ -142,7 +142,7 @@ function renderCapacityLineSettings() {
             type="checkbox"
             data-line="${esc(line)}"
             data-field="morningEnabled"
-            checked>
+            ${setting.morningEnabled ? 'checked' : ''}>
           早班
         </label>
 
@@ -150,7 +150,7 @@ function renderCapacityLineSettings() {
           班別時間
           <input
             type="number"
-            value="8"
+            value="${setting.morningHours}"
             step="0.5"
             data-line="${esc(line)}"
             data-field="morningHours">
@@ -159,7 +159,7 @@ function renderCapacityLineSettings() {
           休息
           <input
             type="number"
-            value="20"
+            value="${setting.morningBreak}"
             data-line="${esc(line)}"
             data-field="morningBreak">
           min
@@ -167,7 +167,7 @@ function renderCapacityLineSettings() {
           午餐
           <input
             type="number"
-            value="60"
+            value="${setting.morningMeal}"
             data-line="${esc(line)}"
             data-field="morningMeal">
           min
@@ -179,7 +179,7 @@ function renderCapacityLineSettings() {
             type="checkbox"
             data-line="${esc(line)}"
             data-field="eveningEnabled"
-            checked>
+            ${setting.eveningEnabled ? 'checked' : ''}>
           中班
         </label>
 
@@ -187,7 +187,7 @@ function renderCapacityLineSettings() {
           班別時間
           <input
             type="number"
-            value="8"
+            value="${setting.eveningHours}"
             step="0.5"
             data-line="${esc(line)}"
             data-field="eveningHours">
@@ -196,7 +196,7 @@ function renderCapacityLineSettings() {
           用餐
           <input
             type="number"
-            value="30"
+            value="${setting.eveningMeal}"
             data-line="${esc(line)}"
             data-field="eveningMeal">
           min
@@ -204,7 +204,7 @@ function renderCapacityLineSettings() {
           休息
           <input
             type="number"
-            value="10"
+            value="${setting.eveningBreak}"
             data-line="${esc(line)}"
             data-field="eveningBreak">
           min
@@ -216,7 +216,7 @@ function renderCapacityLineSettings() {
             type="checkbox"
             data-line="${esc(line)}"
             data-field="nightEnabled"
-            checked>
+            ${setting.nightEnabled ? 'checked' : ''}>
           大夜
         </label>
 
@@ -224,7 +224,7 @@ function renderCapacityLineSettings() {
           班別時間
           <input
             type="number"
-            value="8"
+            value="${setting.nightHours}"
             step="0.5"
             data-line="${esc(line)}"
             data-field="nightHours">
@@ -233,7 +233,7 @@ function renderCapacityLineSettings() {
           休息
           <input
             type="number"
-            value="60"
+            value="${setting.nightBreak}"
             data-line="${esc(line)}"
             data-field="nightBreak">
           min
