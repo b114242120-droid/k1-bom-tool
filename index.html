@@ -1,414 +1,446 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>K1 部品加工數計算系統</title>
   <meta name="description" content="K1 組車 BOM 管理與部品加工數自動計算工具">
   <link rel="stylesheet" href="style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
 </head>
+
 <body>
 
-<!-- ===== HEADER ===== -->
-<header>
-  <div class="header-inner">
-    <div class="logo">
-      <div class="logo-icon">⚙️</div>
-      <div>
-        <h1>組車加工數計算系統</h1>
-        <p>BOM Management &amp; Production Calculator</p>
+  <!-- ===== HEADER ===== -->
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">⚙️</div>
+        <div>
+          <h1>組車加工數計算系統</h1>
+          <p>BOM Management &amp; Production Calculator</p>
+        </div>
       </div>
+      <span class="header-badge">M3使用</span>
     </div>
-    <span class="header-badge">M3使用</span>
-  </div>
-</header>
+  </header>
 
-<!-- ===== TAB NAV ===== -->
-<nav class="tab-nav">
-  <div class="tab-nav-inner">
-    <button class="tab-btn active" data-tab="bom">📋 BOM 管理</button>
-    <button class="tab-btn" data-tab="production">📥 生產計畫</button>
-    <button class="tab-btn" data-tab="daily">🗓️ 每日部品計畫</button>
-    <button class="tab-btn" data-tab="part-lines">⚙️ 加工部品主檔</button>
-    <button class="tab-btn" data-tab="machine-time">⏱️ 設備需求時間</button>
-    <button class="tab-btn" data-tab="result">📊 加工數彙總</button>
-  </div>
-</nav>
+  <!-- ===== TAB NAV ===== -->
+  <nav class="tab-nav">
+    <div class="tab-nav-inner">
+      <button class="tab-btn active" data-tab="bom">📋 BOM 管理</button>
+      <button class="tab-btn" data-tab="production">📥 生產計畫</button>
+      <button class="tab-btn" data-tab="daily">🗓️ 每日部品計畫</button>
+      <button class="tab-btn" data-tab="part-lines">⚙️ 加工部品主檔</button>
+      <button class="tab-btn" data-tab="equipment">🏭 設備主檔</button>
+      <button class="tab-btn" data-tab="machine-time">⏱️ 設備需求時間</button>
+      <button class="tab-btn" data-tab="result">📊 加工數彙總</button>
+    </div>
+  </nav>
 
-<!-- ===== MAIN ===== -->
-<main class="main-content">
+  <!-- ===== MAIN ===== -->
+  <main class="main-content">
 
-  <!-- ── BOM TAB ── -->
-  <section id="tab-bom" class="tab-pane active">
-    <div class="page-header">
-      <div>
-        <h2>BOM 管理</h2>
-        <p id="bom-count">載入中…</p>
+    <!-- ── BOM TAB ── -->
+    <section id="tab-bom" class="tab-pane active">
+      <div class="page-header">
+        <div>
+          <h2>BOM 管理</h2>
+          <p id="bom-count">載入中…</p>
+        </div>
+        <button class="btn btn-primary" onclick="openAddModal()">＋ 新增機種</button>
       </div>
-      <button class="btn btn-primary" onclick="openAddModal()">＋ 新增機種</button>
-    </div>
-    <div class="form-group" style="max-width:420px">
-     <label for="bom-search-input">快速搜尋</label>
-     <input
-      type="text"
-      id="bom-search-input"
-      placeholder="輸入機種代號或部品件號"
-      >
-    </div>
-    <div class="card">
-      <div class="table-wrap">
-        <table id="bom-table">
-          <thead>
-            <tr>
-              <th>機種代號</th>
-              <th>L CASE</th>
-              <th>R CASE</th>
-              <th>L COVER</th>
-              <th>R COVER</th>
-              <th>M CASE</th>
-              <th>UPPER CASE</th>
-              <th>BED CASE</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="bom-tbody"></tbody>
-        </table>
+      <div class="form-group" style="max-width:420px">
+        <label for="bom-search-input">快速搜尋</label>
+        <input type="text" id="bom-search-input" placeholder="輸入機種代號或部品件號">
       </div>
-      <div id="bom-empty" class="empty-state" style="display:none">
-        <div class="empty-icon">📭</div>
-        <p>尚無 BOM 資料</p>
-        <span>點擊右上角「新增機種」開始建立資料庫</span>
+      <div class="card">
+        <div class="table-wrap">
+          <table id="bom-table">
+            <thead>
+              <tr>
+                <th>機種代號</th>
+                <th>L CASE</th>
+                <th>R CASE</th>
+                <th>L COVER</th>
+                <th>R COVER</th>
+                <th>M CASE</th>
+                <th>UPPER CASE</th>
+                <th>BED CASE</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="bom-tbody"></tbody>
+          </table>
+        </div>
+        <div id="bom-empty" class="empty-state" style="display:none">
+          <div class="empty-icon">📭</div>
+          <p>尚無 BOM 資料</p>
+          <span>點擊右上角「新增機種」開始建立資料庫</span>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ── PRODUCTION TAB ── -->
-  <section id="tab-production" class="tab-pane">
-    <div class="page-header">
-      <div>
-        <h2>生產計畫</h2>
-        <p id="plan-count">尚無資料</p>
+    <!-- ── PRODUCTION TAB ── -->
+    <section id="tab-production" class="tab-pane">
+      <div class="page-header">
+        <div>
+          <h2>生產計畫</h2>
+          <p id="plan-count">尚無資料</p>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="clearPlan()">🗑️ 清空計畫</button>
       </div>
-      <button class="btn btn-danger btn-sm" onclick="clearPlan()">🗑️ 清空計畫</button>
-    </div>
 
-    <div class="prod-layout">
-      <!-- Input form -->
-      <div class="form-card">
-        <h3>➕ 新增生產項目</h3>
-        <div class="form-group">
-  <label for="excel-file">匯入生產計畫 Excel</label>
-  <input
-    type="file"
-    id="excel-file"
-    accept=".xlsx,.xls"
-  >
-</div>
+      <div class="prod-layout">
+        <!-- Input form -->
+        <div class="form-card">
+          <h3>➕ 新增生產項目</h3>
+          <div class="form-group">
+            <label for="excel-file">匯入生產計畫 Excel</label>
+            <input type="file" id="excel-file" accept=".xlsx,.xls">
+          </div>
 
-<button
-  class="btn btn-success"
-  style="width:100%; margin-bottom:1rem"
-  onclick="importExcel()"
->
-  📂 讀取 Excel
-</button>
-        <div class="form-group">
-          <label for="plan-model-select">機種代號</label>
-          <select id="plan-model-select">
-            <option value="">-- 請先至 BOM 管理建立機種 --</option>
+          <button class="btn btn-success" style="width:100%; margin-bottom:1rem" onclick="importExcel()">
+            📂 讀取 Excel
+          </button>
+          <div class="form-group">
+            <label for="plan-model-select">機種代號</label>
+            <select id="plan-model-select">
+              <option value="">-- 請先至 BOM 管理建立機種 --</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="plan-qty">生產數量（台）</label>
+            <input type="number" id="plan-qty" min="1" placeholder="輸入生產台數">
+          </div>
+          <button class="btn btn-primary" style="width:100%" onclick="addPlanItem()">加入計畫</button>
+        </div>
+
+        <!-- Plan list -->
+        <div class="form-card">
+          <h3>📋 目前生產計畫</h3>
+          <div id="plan-list" class="plan-list"></div>
+          <div id="plan-empty" class="empty-state" style="padding:2rem 0">
+            <div class="empty-icon">📝</div>
+            <p>尚未加入任何生產項目</p>
+          </div>
+          <hr style="border:none; border-top:1px solid var(--border); margin:1.5rem 0">
+
+          <h3>⚠️ 待建立 BOM</h3>
+          <p id="pending-count" style="font-size:0.8rem; color:var(--text-sub); margin-bottom:1rem">
+            0 筆待處理
+          </p>
+
+          <div id="pending-list" class="plan-list"></div>
+
+          <div id="pending-empty" class="empty-state" style="padding:1.5rem 0">
+            <div class="empty-icon">✅</div>
+            <p>目前沒有待建立的 BOM</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── DAILY PARTS TAB ── -->
+    <section id="tab-daily" class="tab-pane">
+      <div class="page-header">
+        <div>
+          <h2>每日部品計畫</h2>
+          <p id="daily-plan-summary">尚未匯入每日生產資料</p>
+        </div>
+        <div>
+          <select id="daily-line-filter" onchange="renderDailyParts()">
+            <option value="">全部加工線</option>
           </select>
         </div>
-        <div class="form-group">
-          <label for="plan-qty">生產數量（台）</label>
-          <input type="number" id="plan-qty" min="1" placeholder="輸入生產台數">
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table id="daily-parts-table">
+            <thead id="daily-parts-thead"></thead>
+            <tbody id="daily-parts-tbody"></tbody>
+          </table>
         </div>
-        <button class="btn btn-primary" style="width:100%" onclick="addPlanItem()">加入計畫</button>
-      </div>
 
-      <!-- Plan list -->
-      <div class="form-card">
-        <h3>📋 目前生產計畫</h3>
-        <div id="plan-list" class="plan-list"></div>
-        <div id="plan-empty" class="empty-state" style="padding:2rem 0">
-          <div class="empty-icon">📝</div>
-          <p>尚未加入任何生產項目</p>
+        <div id="daily-parts-empty" class="empty-state">
+          <div class="empty-icon">🗓️</div>
+          <p>尚無每日部品計畫</p>
+          <span>請先至「生產計畫」匯入 Excel</span>
         </div>
-        <hr style="border:none; border-top:1px solid var(--border); margin:1.5rem 0">
+      </div>
+    </section>
+    <!-- ── PART LINE SETTINGS TAB ── -->
+    <section id="tab-part-lines" class="tab-pane">
+      <div class="page-header">
+        <div>
+          <h2>加工部品主檔</h2>
+          <p id="part-line-summary">管理部品加工線別、加工設備與 NT</p>
+        </div>
+      </div>
 
-<h3>⚠️ 待建立 BOM</h3>
-<p id="pending-count" style="font-size:0.8rem; color:var(--text-sub); margin-bottom:1rem">
-  0 筆待處理
-</p>
+      <div class="card">
+        <div class="table-wrap">
+          <table id="part-line-table">
+            <thead>
+              <tr>
+                <th>部品代號</th>
+                <th>加工線別</th>
+                <th>OP數量</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="part-line-tbody"></tbody>
+          </table>
+        </div>
 
-<div id="pending-list" class="plan-list"></div>
+        <div id="part-line-empty" class="empty-state">
+          <div class="empty-icon">⚙️</div>
+          <p>尚無部品資料</p>
+          <span>請先建立組車機種 BOM</span>
+        </div>
+      </div>
+    </section>
 
-<div id="pending-empty" class="empty-state" style="padding:1.5rem 0">
-  <div class="empty-icon">✅</div>
-  <p>目前沒有待建立的 BOM</p>
-</div>
+    <!-- ── MACHINE TIME TAB ── -->
+    <section id="tab-machine-time" class="tab-pane">
+      <div class="page-header">
+        <div>
+          <h2>設備需求時間</h2>
+          <p id="machine-time-summary">依每日加工數與 NT 計算</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>加工線</th>
+                <th>部品代號</th>
+                <th>OP</th>
+                <th>管理編號</th>
+                <th>加工數</th>
+                <th>NT（秒）</th>
+                <th>需求時間（分）</th>
+                <th>需求時間（時）</th>
+              </tr>
+            </thead>
+
+            <tbody id="machine-time-tbody"></tbody>
+          </table>
+        </div>
+
+        <div id="machine-time-empty" class="empty-state">
+          <div class="empty-icon">⏱️</div>
+          <p>尚無設備需求資料</p>
+          <span>請先建立每日部品計畫與 OP／NT 資料</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── EQUIPMENT MASTER TAB ── -->
+    <section id="tab-equipment" class="tab-pane">
+
+      <div class="page-header">
+        <div>
+          <h2>設備主檔</h2>
+          <p id="equipment-summary">管理各加工線設備</p>
+        </div>
+
+        <button class="btn btn-primary" onclick="addEquipment()">
+          ＋ 新增設備
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+
+          <table>
+            <thead>
+              <tr>
+                <th>管理編號</th>
+                <th>設備名稱</th>
+                <th>所屬部門</th>
+                <th>所屬 LINE</th>
+                <th>關鍵設備</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+
+            <tbody id="equipment-tbody"></tbody>
+          </table>
+
+        </div>
+
+        <div id="equipment-empty" class="empty-state">
+          <div class="empty-icon">🏭</div>
+          <p>尚未建立設備資料</p>
+          <span>請新增各加工線的設備</span>
+        </div>
+      </div>
+
+    </section>
+    <!-- ── RESULT TAB ── -->
+    <section id="tab-result" class="tab-pane">
+      <div class="page-header">
+        <div>
+          <h2>加工數彙總</h2>
+          <p>依生產計畫自動計算各部品加工總量</p>
+        </div>
+        <button class="btn btn-success" onclick="exportCSV()">⬇️ 匯出 CSV</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-models">0</div>
+          <div class="stat-label">機種數</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-units">0</div>
+          <div class="stat-label">生產台數</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-parts">0</div>
+          <div class="stat-label">部品種類</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-qty">0</div>
+          <div class="stat-label">加工總數</div>
+        </div>
+      </div>
+
+      <!-- Result table -->
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>部品類型</th>
+                <th>部品代號</th>
+                <th>加工數量</th>
+                <th>來源機種</th>
+              </tr>
+            </thead>
+            <tbody id="result-tbody"></tbody>
+          </table>
+        </div>
+        <div id="result-empty" class="empty-state" style="display:none">
+          <div class="empty-icon">📊</div>
+          <p>尚無計算結果</p>
+          <span>請先建立 BOM 資料，並在「生產計畫」頁面輸入生產台數</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== MODAL ===== -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">新增機種 BOM</h3>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group modal-model-field" style="grid-column:1/-1">
+          <label for="modal-model">機種代號</label>
+          <input type="text" id="modal-model" placeholder="例：SA25AE" style="text-transform:uppercase">
+        </div>
+        <p style="font-size:0.8rem;color:var(--text-sub);margin-bottom:1rem">
+          填入各部品對應的加工件號（沒有該部品請留空）
+        </p>
+        <div class="modal-form-grid">
+          <div class="form-group">
+            <label>L CASE</label>
+            <input type="text" id="field-L_CASE" placeholder="件號" style="text-transform:uppercase">
+          </div>
+          <div class="form-group">
+            <label>R CASE</label>
+            <input type="text" id="field-R_CASE" placeholder="件號" style="text-transform:uppercase">
+          </div>
+          <div class="form-group">
+            <label>L COVER</label>
+            <input type="text" id="field-L_COVER" placeholder="件號" style="text-transform:uppercase">
+          </div>
+          <div class="form-group">
+            <label>R COVER</label>
+            <input type="text" id="field-R_COVER" placeholder="件號" style="text-transform:uppercase">
+          </div>
+          <div class="form-group">
+            <label>M CASE</label>
+            <input type="text" id="field-M_CASE" placeholder="件號" style="text-transform:uppercase">
+          </div>
+          <div class="form-group">
+            <label>UPPER CASE</label>
+            <input type="text" id="field-UPPER_CASE" placeholder="件號" style="text-transform:uppercase">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>BED CASE</label>
+            <input type="text" id="field-BED_CASE" placeholder="件號" style="text-transform:uppercase">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="saveModal()">💾 儲存</button>
       </div>
     </div>
-  </section>
-
-  <!-- ── DAILY PARTS TAB ── -->
-<section id="tab-daily" class="tab-pane">
-  <div class="page-header">
-    <div>
-      <h2>每日部品計畫</h2>
-      <p id="daily-plan-summary">尚未匯入每日生產資料</p>
-    </div>
-    <div>
-      <select id="daily-line-filter" onchange="renderDailyParts()">
-        <option value="">全部加工線</option>
-  </select>
-</div>
   </div>
 
-  <div class="card">
-    <div class="table-wrap">
-      <table id="daily-parts-table">
-        <thead id="daily-parts-thead"></thead>
-        <tbody id="daily-parts-tbody"></tbody>
-      </table>
-    </div>
-
-    <div id="daily-parts-empty" class="empty-state">
-      <div class="empty-icon">🗓️</div>
-      <p>尚無每日部品計畫</p>
-      <span>請先至「生產計畫」匯入 Excel</span>
-    </div>
-  </div>
-</section>
-<!-- ── PART LINE SETTINGS TAB ── -->
-<section id="tab-part-lines" class="tab-pane">
-  <div class="page-header">
-    <div>
-      <h2>加工部品主檔</h2>
-      <p id="part-line-summary">管理部品加工線別、加工設備與 NT</p>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="table-wrap">
-      <table id="part-line-table">
-        <thead>
-          <tr>
-            <th>部品代號</th>
-            <th>加工線別</th>
-            <th>OP數量</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="part-line-tbody"></tbody>
-      </table>
-    </div>
-
-    <div id="part-line-empty" class="empty-state">
-      <div class="empty-icon">⚙️</div>
-      <p>尚無部品資料</p>
-      <span>請先建立組車機種 BOM</span>
-    </div>
-  </div>
-</section>
-
-<!-- ── MACHINE TIME TAB ── -->
-<section id="tab-machine-time" class="tab-pane">
-  <div class="page-header">
-    <div>
-      <h2>設備需求時間</h2>
-      <p id="machine-time-summary">依每日加工數與 NT 計算</p>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>日期</th>
-            <th>加工線</th>
-            <th>部品代號</th>
-            <th>OP</th>
-            <th>管理編號</th>
-            <th>加工數</th>
-            <th>NT（秒）</th>
-            <th>需求時間（分）</th>
-            <th>需求時間（時）</th>
-          </tr>
-        </thead>
-
-        <tbody id="machine-time-tbody"></tbody>
-      </table>
-    </div>
-
-    <div id="machine-time-empty" class="empty-state">
-      <div class="empty-icon">⏱️</div>
-      <p>尚無設備需求資料</p>
-      <span>請先建立每日部品計畫與 OP／NT 資料</span>
-    </div>
-  </div>
-</section>
-
-  <!-- ── RESULT TAB ── -->
-  <section id="tab-result" class="tab-pane">
-    <div class="page-header">
-      <div>
-        <h2>加工數彙總</h2>
-        <p>依生產計畫自動計算各部品加工總量</p>
+  <!-- ===== TOAST ===== -->
+  <div id="toast-container" class="toast-container"></div>
+  <!-- ── PART MASTER MODAL ── -->
+  <div id="part-master-overlay" class="modal-overlay hidden">
+    <div class="modal" style="max-width:750px">
+      <div class="modal-header">
+        <h3>加工部品設定</h3>
+        <button class="modal-close" onclick="closePartMaster()">✕</button>
       </div>
-      <button class="btn btn-success" onclick="exportCSV()">⬇️ 匯出 CSV</button>
-    </div>
 
-    <!-- Stats -->
-    <div class="stat-grid">
-      <div class="stat-card">
-        <div class="stat-value" id="stat-models">0</div>
-        <div class="stat-label">機種數</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" id="stat-units">0</div>
-        <div class="stat-label">生產台數</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" id="stat-parts">0</div>
-        <div class="stat-label">部品種類</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" id="stat-qty">0</div>
-        <div class="stat-label">加工總數</div>
-      </div>
-    </div>
+      <div class="modal-body">
+        <div style="margin-bottom:1rem">
+          <strong>部品代號：</strong>
+          <span id="part-master-code"></span>
+        </div>
 
-    <!-- Result table -->
-    <div class="card">
-      <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>#</th>
-              <th>部品類型</th>
-              <th>部品代號</th>
-              <th>加工數量</th>
-              <th>來源機種</th>
+              <th>OP編號</th>
+              <th>管理編號</th>
+              <th>NT（秒）</th>
+              <th>操作</th>
             </tr>
           </thead>
-          <tbody id="result-tbody"></tbody>
+
+          <tbody id="part-master-ops"></tbody>
         </table>
-      </div>
-      <div id="result-empty" class="empty-state" style="display:none">
-        <div class="empty-icon">📊</div>
-        <p>尚無計算結果</p>
-        <span>請先建立 BOM 資料，並在「生產計畫」頁面輸入生產台數</span>
-      </div>
-    </div>
-  </section>
 
-</main>
+        <button class="btn btn-secondary" onclick="addPartOperationRow()" style="margin-top:1rem">
+          ＋ 新增 OP
+        </button>
+      </div>
 
-<!-- ===== MODAL ===== -->
-<div id="modal-overlay" class="modal-overlay hidden">
-  <div class="modal">
-    <div class="modal-header">
-      <h3 id="modal-title">新增機種 BOM</h3>
-      <button class="modal-close" onclick="closeModal()">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group modal-model-field" style="grid-column:1/-1">
-        <label for="modal-model">機種代號</label>
-        <input type="text" id="modal-model" placeholder="例：SA25AE" style="text-transform:uppercase">
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closePartMaster()">
+          取消
+        </button>
+
+        <button class="btn btn-primary" onclick="savePartMaster()">
+          儲存
+        </button>
       </div>
-      <p style="font-size:0.8rem;color:var(--text-sub);margin-bottom:1rem">
-        填入各部品對應的加工件號（沒有該部品請留空）
-      </p>
-      <div class="modal-form-grid">
-        <div class="form-group">
-          <label>L CASE</label>
-          <input type="text" id="field-L_CASE" placeholder="件號" style="text-transform:uppercase">
-        </div>
-        <div class="form-group">
-          <label>R CASE</label>
-          <input type="text" id="field-R_CASE" placeholder="件號" style="text-transform:uppercase">
-        </div>
-        <div class="form-group">
-          <label>L COVER</label>
-          <input type="text" id="field-L_COVER" placeholder="件號" style="text-transform:uppercase">
-        </div>
-        <div class="form-group">
-          <label>R COVER</label>
-          <input type="text" id="field-R_COVER" placeholder="件號" style="text-transform:uppercase">
-        </div>
-        <div class="form-group">
-          <label>M CASE</label>
-          <input type="text" id="field-M_CASE" placeholder="件號" style="text-transform:uppercase">
-        </div>
-        <div class="form-group">
-          <label>UPPER CASE</label>
-          <input type="text" id="field-UPPER_CASE" placeholder="件號" style="text-transform:uppercase">
-        </div>
-        <div class="form-group" style="grid-column:1/-1">
-          <label>BED CASE</label>
-          <input type="text" id="field-BED_CASE" placeholder="件號" style="text-transform:uppercase">
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal()">取消</button>
-      <button class="btn btn-primary" onclick="saveModal()">💾 儲存</button>
     </div>
   </div>
-</div>
 
-<!-- ===== TOAST ===== -->
-<div id="toast-container" class="toast-container"></div>
-<!-- ── PART MASTER MODAL ── -->
-<div id="part-master-overlay" class="modal-overlay hidden">
-  <div class="modal" style="max-width:750px">
-    <div class="modal-header">
-      <h3>加工部品設定</h3>
-      <button class="modal-close" onclick="closePartMaster()">✕</button>
-    </div>
-
-    <div class="modal-body">
-      <div style="margin-bottom:1rem">
-        <strong>部品代號：</strong>
-        <span id="part-master-code"></span>
-      </div>
-
-      <table>
-        <thead>
-          <tr>
-            <th>OP編號</th>
-            <th>管理編號</th>
-            <th>NT（秒）</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-
-        <tbody id="part-master-ops"></tbody>
-      </table>
-
-      <button
-        class="btn btn-secondary"
-        onclick="addPartOperationRow()"
-        style="margin-top:1rem">
-        ＋ 新增 OP
-      </button>
-    </div>
-
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closePartMaster()">
-        取消
-      </button>
-
-      <button class="btn btn-primary" onclick="savePartMaster()">
-        儲存
-      </button>
-    </div>
-  </div>
-</div>
-
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="app.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
 </body>
+
 </html>
