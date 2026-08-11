@@ -31,6 +31,7 @@
     <button class="tab-btn" data-tab="production">📥 生產計畫</button>
     <button class="tab-btn" data-tab="daily">🗓️ 每日部品計畫</button>
     <button class="tab-btn" data-tab="part-lines">⚙️ 加工部品主檔</button>
+    <button class="tab-btn" data-tab="machine-time">⏱️ 設備需求時間</button>
     <button class="tab-btn" data-tab="result">📊 加工數彙總</button>
   </div>
 </nav>
@@ -207,6 +208,44 @@
       <div class="empty-icon">⚙️</div>
       <p>尚無部品資料</p>
       <span>請先建立組車機種 BOM</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── MACHINE TIME TAB ── -->
+<section id="tab-machine-time" class="tab-pane">
+  <div class="page-header">
+    <div>
+      <h2>設備需求時間</h2>
+      <p id="machine-time-summary">依每日加工數與 NT 計算</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>加工線</th>
+            <th>部品代號</th>
+            <th>OP</th>
+            <th>管理編號</th>
+            <th>加工數</th>
+            <th>NT（秒）</th>
+            <th>需求時間（分）</th>
+            <th>需求時間（時）</th>
+          </tr>
+        </thead>
+
+        <tbody id="machine-time-tbody"></tbody>
+      </table>
+    </div>
+
+    <div id="machine-time-empty" class="empty-state">
+      <div class="empty-icon">⏱️</div>
+      <p>尚無設備需求資料</p>
+      <span>請先建立每日部品計畫與 OP／NT 資料</span>
     </div>
   </div>
 </section>
