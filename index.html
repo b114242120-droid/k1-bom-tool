@@ -50,7 +50,23 @@
           <h2>BOM 管理</h2>
           <p id="bom-count">載入中…</p>
         </div>
-        <button class="btn btn-primary" onclick="openAddModal()">＋ 新增機種</button>
+        <div style="display:flex; gap:0.5rem; align-items:center">
+
+          <input type="file" id="bom-excel-file" accept=".xlsx,.xls" style="display:none" onchange="importBOMMaster()">
+
+          <button class="btn btn-secondary" onclick="document.getElementById('bom-excel-file').click()">
+            📥 BOM 轉入
+          </button>
+
+          <button class="btn btn-success" onclick="exportBOMMaster()">
+            📤 BOM 轉出
+          </button>
+
+          <button class="btn btn-primary" onclick="openAddModal()">
+            ＋ 新增機種
+          </button>
+
+        </div>
       </div>
       <div class="form-group" style="max-width:420px">
         <label for="bom-search-input">快速搜尋</label>

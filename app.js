@@ -128,16 +128,196 @@ function renderBOM() {
 
 function deleteModel(model) {
   if (!confirm(`確定刪除機種「${model}」的 BOM 資料？`)) return;
+
   const bom = loadBOM();
+  const plan = loadPlan();
+  const pending = loadPending();
+
   delete bom[model];
   saveBOM(bom);
+
+  const planItem = plan.find(
+    item => item.model === model
+  );
+
+  if (planItem) {
+    const existingPending = pending.find(
+      item => item.model === model
+    );
+
+    if (existingPending) {
+      existingPending.qty += planItem.qty;
+    } else {
+      pending.push({
+        model,
+        qty: planItem.qty
+      });
+    }
+
+    savePlan(
+      plan.filter(item => item.model !== model)
+    );
+
+    savePending(pending);
+  }
+
   renderBOM();
+  renderPlan();
+  renderPending();
   refreshPlanSelect();
+  renderDailyParts();
+  renderResult();
+
   toast('已刪除 ' + model, 'success');
-}
+} // deleteModel 結束
 
 // ===== MODAL =====
 let editingModel = null;
+
+function exportBOMMaster() {
+  const bom = loadBOM();
+  const pending = loadPending();
+
+  const allModels = [
+    ...Object.keys(bom),
+    ...pending.map(item => item.model)
+  ];
+
+  const models = [...new Set(allModels)]
+    .filter(Boolean)
+    .sort();
+
+  if (models.length === 0) {
+    toast('尚無 BOM 或待建立機種可轉出', 'error');
+    return;
+  }
+
+  const rows = models.map(model => {
+    const item = bom[model] || {};
+
+    return {
+      機種代號: model,
+      'L CASE': item['L CASE'] || '',
+      'R CASE': item['R CASE'] || '',
+      'L COVER': item['L COVER'] || '',
+      'R COVER': item['R COVER'] || '',
+      'M CASE': item['M CASE'] || '',
+      'UPPER CASE': item['UPPER CASE'] || '',
+      'BED CASE': item['BED CASE'] || ''
+    };
+  });
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    'BOM主檔'
+  );
+
+  XLSX.writeFile(
+    workbook,
+    'BOM主檔.xlsx'
+  );
+
+  toast(
+    `BOM 主檔已轉出，共 ${models.length} 個機種`,
+    'success'
+  );
+} // exportBOMMaster 結束
+
+async function importBOMMaster() {
+  const fileInput =
+    document.getElementById('bom-excel-file');
+
+  const file = fileInput.files[0];
+
+  if (!file) return;
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+
+    const workbook = XLSX.read(arrayBuffer, {
+      type: 'array'
+    });
+
+    const worksheet =
+      workbook.Sheets[workbook.SheetNames[0]];
+
+    const rows = XLSX.utils.sheet_to_json(
+      worksheet,
+      { defval: '' }
+    );
+
+    const bom = loadBOM();
+
+    let addedCount = 0;
+    let updatedCount = 0;
+
+    rows.forEach(row => {
+      const model =
+        String(row['機種代號'] || '')
+          .trim()
+          .toUpperCase();
+
+      if (!model) return;
+
+      const bomRow = {};
+
+      PART_TYPES.forEach(type => {
+        bomRow[type] =
+          String(row[type] || '')
+            .trim()
+            .toUpperCase();
+      });
+
+      const hasBOM =
+        PART_TYPES.some(type => bomRow[type]);
+
+      if (!hasBOM) return;
+
+      if (bom[model]) {
+        updatedCount++;
+      } else {
+        addedCount++;
+      }
+
+      bom[model] = bomRow;
+    });
+
+    saveBOM(bom);
+
+    const pending = loadPending();
+
+    const remainingPending = pending.filter(
+      item => !bom[item.model]
+    );
+
+    savePending(remainingPending);
+
+    renderBOM();
+    renderPending();
+    refreshPlanSelect();
+
+    fileInput.value = '';
+
+    toast(
+      `BOM 轉入完成｜新增 ${addedCount} 筆｜更新 ${updatedCount} 筆`,
+      'success'
+    );
+
+  } catch (error) {
+    console.error('BOM 轉入失敗：', error);
+
+    fileInput.value = '';
+
+    toast(
+      'BOM 轉入失敗，請確認 Excel 格式',
+      'error'
+    );
+  }
+} // importBOMMaster 結束
 
 function openAddModal() {
   editingModel = null;
