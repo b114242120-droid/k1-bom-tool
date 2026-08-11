@@ -36,6 +36,7 @@
       <button class="tab-btn" data-tab="part-lines">⚙️ 加工部品主檔</button>
       <button class="tab-btn" data-tab="equipment">🏭 設備主檔</button>
       <button class="tab-btn" data-tab="machine-time">⏱️ 設備需求時間</button>
+      <button class="tab-btn" data-tab="capacity">📈 產能負荷分析</button>
       <button class="tab-btn" data-tab="result">📊 加工數彙總</button>
     </div>
   </nav>
@@ -256,6 +257,30 @@
           <span>請先建立每日部品計畫與 OP／NT 資料</span>
         </div>
       </div>
+    </section>
+    
+    <!-- ===== CAPACITY LOAD ANALYSIS TAB ===== -->
+    <section id="tab-capacity" class="tab-pane">
+    
+      <div class="page-header">
+        <div>
+          <h2>📈 產能負荷分析</h2>
+          <p>依各 LINE 設定出勤、班別與生產條件</p>
+        </div>
+      </div>
+    
+      <div class="card">
+        <h3>⚙️ LINE 計算條件</h3>
+    
+        <p style="margin-top:0.5rem; color:var(--text-muted)">
+          各加工線可分別設定出勤天數、班別、換模與多部品修正條件。
+        </p>
+    
+        <div id="capacity-line-settings">
+          尚未載入 LINE 設定
+        </div>
+      </div>
+    
     </section>
 
     <!-- ── EQUIPMENT MASTER TAB ── -->
