@@ -141,10 +141,19 @@ let editingModel = null;
 
 function exportBOMMaster() {
   const bom = loadBOM();
-  const models = Object.keys(bom);
+  const pending = loadPending();
+
+  const allModels = [
+    ...Object.keys(bom),
+    ...pending.map(item => item.model)
+  ];
+
+  const models = [...new Set(allModels)]
+    .filter(Boolean)
+    .sort();
 
   if (models.length === 0) {
-    toast('尚無 BOM 資料可轉出', 'error');
+    toast('尚無 BOM 或待建立機種可轉出', 'error');
     return;
   }
 
@@ -177,7 +186,10 @@ function exportBOMMaster() {
     'BOM主檔.xlsx'
   );
 
-  toast('BOM 主檔已轉出', 'success');
+  toast(
+    `BOM 主檔已轉出，共 ${models.length} 個機種`,
+    'success'
+  );
 } // exportBOMMaster 結束
 
 async function importBOMMaster() {
@@ -225,6 +237,11 @@ async function importBOMMaster() {
             .toUpperCase();
       });
 
+      const hasBOM =
+        PART_TYPES.some(type => bomRow[type]);
+
+      if (!hasBOM) return;
+
       if (bom[model]) {
         updatedCount++;
       } else {
@@ -236,7 +253,16 @@ async function importBOMMaster() {
 
     saveBOM(bom);
 
+    const pending = loadPending();
+
+    const remainingPending = pending.filter(
+      item => !bom[item.model]
+    );
+
+    savePending(remainingPending);
+
     renderBOM();
+    renderPending();
     refreshPlanSelect();
 
     fileInput.value = '';
