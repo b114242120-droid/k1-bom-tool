@@ -130,6 +130,36 @@ function getCapacityLineSetting(line) {
   };
 } // getCapacityLineSetting 結束
 
+function calculateCapacityTime(setting) {
+  let dailyHours = 0;
+
+  if (setting.morningEnabled) {
+    dailyHours +=
+      setting.morningHours -
+      (setting.morningBreak + setting.morningMeal) / 60;
+  }
+
+  if (setting.eveningEnabled) {
+    dailyHours +=
+      setting.eveningHours -
+      (setting.eveningBreak + setting.eveningMeal) / 60;
+  }
+
+  if (setting.nightEnabled) {
+    dailyHours +=
+      setting.nightHours -
+      setting.nightBreak / 60;
+  }
+
+  const totalHours =
+    dailyHours * setting.attendanceDays;
+
+  return {
+    dailyHours,
+    totalHours
+  };
+} // calculateCapacityTime 結束
+
 function renderCapacityLineSettings() {
   const container =
     document.getElementById('capacity-line-settings');
@@ -149,6 +179,39 @@ function renderCapacityLineSettings() {
 
   container.innerHTML = lines.map(line => {
     const setting = getCapacityLineSetting(line);
+    const capacityTime = calculateCapacityTime(setting);
+
+    const machineLoads = calculateMachineLoad()
+      .filter(item => item.line === line)
+      .sort((a, b) => b.loadRate - a.loadRate);
+
+    const bottleneck = machineLoads[0] || null;
+
+    const machineLoadRows = machineLoads.map(item => {
+      const status =
+        item.loadRate > 100
+          ? '🔴'
+          : item.loadRate >= 85
+            ? '🟡'
+            : '🟢';
+
+      return `
+    <tr>
+      <td>${esc(item.machine)}</td>
+      <td>${item.requiredHours.toFixed(2)} hr</td>
+      <td>${item.loadRate.toFixed(1)} % ${status}</td>
+    </tr>
+  `;
+    }).join('');
+
+    const loadStatus =
+      !bottleneck
+        ? '⚪ 尚無資料'
+        : bottleneck.loadRate > 100
+          ? '🔴 超載'
+          : bottleneck.loadRate >= 85
+            ? '🟡 注意'
+            : '🟢 正常';
 
     return `
     <details class="card" style="margin-top:1rem">
@@ -159,6 +222,55 @@ function renderCapacityLineSettings() {
 
       <div style="margin-top:1rem">
 
+        <div style="margin-bottom:1rem">
+          <strong>每日有效工時：</strong>
+          ${capacityTime.dailyHours.toFixed(2)} hr
+
+          <br>
+
+          <strong>期間總有效工時：</strong>
+${capacityTime.totalHours.toFixed(2)} hr
+
+<hr style="margin:0.8rem 0">
+
+<div>
+  <strong>瓶頸設備：</strong>
+  ${bottleneck ? esc(bottleneck.machine) : '尚無資料'}
+</div>
+
+<div>
+  <strong>需求工時：</strong>
+  ${bottleneck ? bottleneck.requiredHours.toFixed(2) : '0.00'} hr
+</div>
+
+<div>
+  <strong>設備負荷率：</strong>
+  ${bottleneck ? bottleneck.loadRate.toFixed(1) : '0.0'} %
+  &nbsp; ${loadStatus}
+</div>
+
+${machineLoads.length > 0 ? `
+  <details style="margin-top:0.8rem">
+    <summary style="cursor:pointer">
+      查看全部設備負荷
+    </summary>
+
+    <table style="width:100%;margin-top:0.6rem">
+      <thead>
+        <tr>
+          <th>設備</th>
+          <th>需求工時</th>
+          <th>負荷率</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        ${machineLoadRows}
+      </tbody>
+    </table>
+  </details>
+` : ''}
+        </div>
         <div class="form-group">
           <label>出勤天數</label>
           <input
@@ -342,6 +454,8 @@ function saveCapacityLineSetting(button) {
   };
 
   saveCapacitySettings(settings);
+
+  renderCapacityLineSettings();
 
   toast(`${line} LINE 設定已儲存`, 'success');
 } // saveCapacityLineSetting 結束
@@ -1364,6 +1478,50 @@ function calculateMachineRequiredTime() {
     a.op.localeCompare(b.op)
   );
 } // calculateMachineRequiredTime 結束
+
+function calculateMachineLoad() {
+  const machineTime = calculateMachineRequiredTime();
+  const result = {};
+
+  machineTime.forEach(item => {
+    if (!item.line || !item.machine) return;
+
+    const key = `${item.line}__${item.machine}`;
+
+    if (!result[key]) {
+      result[key] = {
+        line: item.line,
+        machine: item.machine,
+        requiredHours: 0
+      };
+    }
+
+    result[key].requiredHours += item.requiredHours;
+  });
+
+  return Object.values(result).map(item => {
+    const setting =
+      getCapacityLineSetting(item.line);
+
+    const capacityTime =
+      calculateCapacityTime(setting);
+
+    const availableHours =
+      capacityTime.totalHours;
+
+    const loadRate =
+      availableHours > 0
+        ? item.requiredHours / availableHours * 100
+        : 0;
+
+    return {
+      ...item,
+      availableHours,
+      loadRate
+    };
+  });
+} // calculateMachineLoad 結束
+
 function calculateDailyParts() {
   const dailyPlan = loadDailyPlan();
   const bom = loadBOM();
