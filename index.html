@@ -76,19 +76,8 @@
       <div class="card">
         <div class="table-wrap">
           <table id="bom-table">
-            <thead>
-              <tr>
-                <th>機種代號</th>
-                <th>L CASE</th>
-                <th>R CASE</th>
-                <th>L COVER</th>
-                <th>R COVER</th>
-                <th>M CASE</th>
-                <th>UPPER CASE</th>
-                <th>BED CASE</th>
-                <th>操作</th>
-              </tr>
-            </thead>
+            <thead id="bom-thead"></thead>
+
             <tbody id="bom-tbody"></tbody>
           </table>
         </div>
@@ -258,29 +247,29 @@
         </div>
       </div>
     </section>
-    
+
     <!-- ===== CAPACITY LOAD ANALYSIS TAB ===== -->
     <section id="tab-capacity" class="tab-pane">
-    
+
       <div class="page-header">
         <div>
           <h2>📈 產能負荷分析</h2>
           <p>依各 LINE 設定出勤、班別與生產條件</p>
         </div>
       </div>
-    
+
       <div class="card">
         <h3>⚙️ LINE 計算條件</h3>
-    
+
         <p style="margin-top:0.5rem; color:var(--text-muted)">
           各加工線可分別設定出勤天數、班別、換模與多部品修正條件。
         </p>
-    
+
         <div id="capacity-line-settings">
           尚未載入 LINE 設定
         </div>
       </div>
-    
+
     </section>
 
     <!-- ── EQUIPMENT MASTER TAB ── -->
@@ -411,35 +400,8 @@
         <p style="font-size:0.8rem;color:var(--text-sub);margin-bottom:1rem">
           填入各部品對應的加工件號（沒有該部品請留空）
         </p>
-        <div class="modal-form-grid">
-          <div class="form-group">
-            <label>L CASE</label>
-            <input type="text" id="field-L_CASE" placeholder="件號" style="text-transform:uppercase">
-          </div>
-          <div class="form-group">
-            <label>R CASE</label>
-            <input type="text" id="field-R_CASE" placeholder="件號" style="text-transform:uppercase">
-          </div>
-          <div class="form-group">
-            <label>L COVER</label>
-            <input type="text" id="field-L_COVER" placeholder="件號" style="text-transform:uppercase">
-          </div>
-          <div class="form-group">
-            <label>R COVER</label>
-            <input type="text" id="field-R_COVER" placeholder="件號" style="text-transform:uppercase">
-          </div>
-          <div class="form-group">
-            <label>M CASE</label>
-            <input type="text" id="field-M_CASE" placeholder="件號" style="text-transform:uppercase">
-          </div>
-          <div class="form-group">
-            <label>UPPER CASE</label>
-            <input type="text" id="field-UPPER_CASE" placeholder="件號" style="text-transform:uppercase">
-          </div>
-          <div class="form-group" style="grid-column:1/-1">
-            <label>BED CASE</label>
-            <input type="text" id="field-BED_CASE" placeholder="件號" style="text-transform:uppercase">
-          </div>
+        <div class="modal-form-grid"
+          id="bom-modal-fields">
         </div>
       </div>
       <div class="modal-footer">
