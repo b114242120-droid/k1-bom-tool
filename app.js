@@ -7,7 +7,27 @@ const PART_LINE_KEY = 'k1_part_lines';
 const PART_OPS_KEY = 'k1_part_operations';
 const EQUIPMENT_KEY = 'k1_equipment_master';
 const CAPACITY_SETTINGS_KEY = 'k1_capacity_line_settings';
-const PART_TYPES = ['L CASE', 'R CASE', 'L COVER', 'R COVER', 'M CASE', 'UPPER CASE', 'BED CASE'];
+const BOM_FIELDS_KEY = 'k1_bom_fields';
+
+const DEFAULT_PART_TYPES = [
+  'L CASE',
+  'R CASE',
+  'L COVER',
+  'R COVER',
+  'M CASE',
+  'UPPER CASE',
+  'BED CASE'
+];
+
+const savedPartTypes =
+  JSON.parse(
+    localStorage.getItem(BOM_FIELDS_KEY) || '[]'
+  );
+
+let PART_TYPES =
+  savedPartTypes.length > 0
+    ? savedPartTypes
+    : [...DEFAULT_PART_TYPES];
 const PROCESS_LINES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I1', 'I2', 'O', 'P', 'Q', 'R', 'S'];
 
 const PART_TAG_CLASS = {
@@ -21,8 +41,23 @@ const PART_TAG_CLASS = {
 };
 
 // ===== STORAGE =====
-function loadBOM() { return JSON.parse(localStorage.getItem(BOM_KEY) || '{}'); }
-function saveBOM(d) { localStorage.setItem(BOM_KEY, JSON.stringify(d)); }
+function loadBOM() {
+  return JSON.parse(localStorage.getItem(BOM_KEY) || '{}');
+}
+
+function saveBOM(d) {
+  localStorage.setItem(
+    BOM_KEY,
+    JSON.stringify(d)
+  );
+}
+
+function saveBOMFields(fields) {
+  localStorage.setItem(
+    BOM_FIELDS_KEY,
+    JSON.stringify(fields)
+  );
+}
 function loadPlan() { return JSON.parse(localStorage.getItem(PLAN_KEY) || '[]'); }
 function savePlan(d) { localStorage.setItem(PLAN_KEY, JSON.stringify(d)); }
 function loadPending() { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); }
@@ -330,6 +365,22 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ===== BOM TAB =====
 function renderBOM() {
   const bom = loadBOM();
+
+  const thead =
+    document.getElementById('bom-thead');
+
+  thead.innerHTML = `
+    <tr>
+      <th>機種代號</th>
+
+      ${PART_TYPES.map(type => `
+        <th>${esc(type)}</th>
+      `).join('')}
+
+      <th>操作</th>
+    </tr>
+  `;
+
   const allKeys = Object.keys(bom);
   const keyword = (document.getElementById('bom-search-input')?.value || '').trim().toUpperCase();
 
@@ -448,19 +499,26 @@ function exportBOMMaster() {
   const rows = models.map(model => {
     const item = bom[model] || {};
 
-    return {
-      機種代號: model,
-      'L CASE': item['L CASE'] || '',
-      'R CASE': item['R CASE'] || '',
-      'L COVER': item['L COVER'] || '',
-      'R COVER': item['R COVER'] || '',
-      'M CASE': item['M CASE'] || '',
-      'UPPER CASE': item['UPPER CASE'] || '',
-      'BED CASE': item['BED CASE'] || ''
+    const row = {
+      機種代號: model
     };
+
+    PART_TYPES.forEach(type => {
+      row[type] = item[type] || '';
+    });
+
+    return row;
   });
 
-  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const worksheet = XLSX.utils.json_to_sheet(
+    rows,
+    {
+      header: [
+        '機種代號',
+        ...PART_TYPES
+      ]
+    }
+  );
   const workbook = XLSX.utils.book_new();
 
   XLSX.utils.book_append_sheet(
@@ -497,6 +555,41 @@ async function importBOMMaster() {
 
     const worksheet =
       workbook.Sheets[workbook.SheetNames[0]];
+
+    // 讀取 Excel 第一列欄位
+    const rawRows = XLSX.utils.sheet_to_json(
+      worksheet,
+      {
+        header: 1,
+        defval: ''
+      }
+    );
+
+    const headers =
+      (rawRows[0] || [])
+        .map(header => String(header).trim())
+        .filter(Boolean);
+
+    if (!headers.includes('機種代號')) {
+      toast('找不到「機種代號」欄位', 'error');
+      return;
+    }
+
+    // 除了機種代號以外，全部視為 BOM 項目
+    const importedPartTypes =
+      headers.filter(
+        header => header !== '機種代號'
+      );
+
+    if (importedPartTypes.length === 0) {
+      toast('Excel 中沒有 BOM 項目', 'error');
+      return;
+    }
+
+    // 更新系統 BOM 欄位
+    PART_TYPES = importedPartTypes;
+
+    saveBOMFields(PART_TYPES);
 
     const rows = XLSX.utils.sheet_to_json(
       worksheet,
@@ -572,15 +665,43 @@ async function importBOMMaster() {
   }
 } // importBOMMaster 結束
 
+function renderBOMModalFields(row = {}) {
+  const container =
+    document.getElementById('bom-modal-fields');
+
+  container.innerHTML = PART_TYPES.map(type => {
+    const fieldId =
+      'field-' + type.replace(/ /g, '_');
+
+    return `
+      <div class="form-group">
+        <label>${esc(type)}</label>
+
+        <input
+          type="text"
+          id="${esc(fieldId)}"
+          value="${esc(row[type] || '')}"
+          placeholder="件號"
+          style="text-transform:uppercase">
+      </div>
+    `;
+  }).join('');
+} // renderBOMModalFields 結束
+
 function openAddModal() {
   editingModel = null;
-  document.getElementById('modal-title').textContent = '新增機種 BOM';
+
+  document.getElementById('modal-title').textContent =
+    '新增機種 BOM';
+
   document.getElementById('modal-model').value = '';
   document.getElementById('modal-model').disabled = false;
-  PART_TYPES.forEach(pt => {
-    document.getElementById('field-' + pt.replace(/ /g, '_')).value = '';
-  });
-  document.getElementById('modal-overlay').classList.remove('hidden');
+
+  renderBOMModalFields();
+
+  document.getElementById('modal-overlay')
+    .classList.remove('hidden');
+
   document.getElementById('modal-model').focus();
 }
 
@@ -591,9 +712,7 @@ function openEditModal(model) {
   document.getElementById('modal-title').textContent = '編輯機種 BOM';
   document.getElementById('modal-model').value = model;
   document.getElementById('modal-model').disabled = true;
-  PART_TYPES.forEach(pt => {
-    document.getElementById('field-' + pt.replace(/ /g, '_')).value = row[pt] || '';
-  });
+  renderBOMModalFields(row);
   document.getElementById('modal-overlay').classList.remove('hidden');
 }
 
@@ -766,9 +885,18 @@ function renderPending() {
 
 function openPendingBOM(model) {
   openAddModal();
-  document.getElementById('modal-title').textContent = '建立待處理 BOM';
+
+  document.getElementById('modal-title').textContent =
+    '建立待處理 BOM';
+
   document.getElementById('modal-model').value = model;
-  document.getElementById('field-L_CASE').focus();
+
+  const firstField =
+    document.querySelector('#bom-modal-fields input');
+
+  if (firstField) {
+    firstField.focus();
+  }
 } // openPendingBOM 結束
 
 // ===== DAILY PARTS PLAN =====
