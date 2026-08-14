@@ -1046,6 +1046,8 @@ function renderEquipmentMaster() {
 
     <td>${esc(item.line || '—')} LINE</td>
 
+    <td>${esc(item.group || '—')}</td>
+
     <td>${item.critical ? '✅ 是' : '— 否'}</td>
 
     <td>
@@ -1246,6 +1248,13 @@ function addEquipment() {
 
       <td>
         <input
+          type="text"
+          data-field="group"
+          placeholder="例：G01">
+      </td>
+
+      <td>
+        <input
           type="checkbox"
           data-field="critical"
           checked>
@@ -1362,6 +1371,14 @@ function editEquipment(button) {
       </select>
     </td>
 
+     <td>
+        <input
+          type="text"
+          data-field="group"
+          value="${esc(item.group || '')}"
+          placeholder="例：G01">
+      </td>
+
     <td>
       <input
         type="checkbox"
@@ -1401,6 +1418,11 @@ function saveEquipmentEdit(button) {
   const line =
     row.querySelector('[data-field="line"]').value;
 
+  const group =
+    row.querySelector('[data-field="group"]').value
+      .trim()
+      .toUpperCase();
+
   const critical =
     row.querySelector('[data-field="critical"]').checked;
 
@@ -1420,6 +1442,7 @@ function saveEquipmentEdit(button) {
   item.name = name;
   item.department = department;
   item.line = line;
+  item.group = group;
   item.critical = critical;
 
   saveEquipmentMaster(data);
