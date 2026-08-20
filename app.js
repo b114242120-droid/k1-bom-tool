@@ -161,6 +161,7 @@ function calculateCapacityTime(setting) {
 } // calculateCapacityTime 結束
 
 function renderCapacityLineSettings() {
+  calculateGroupLoad();
   const container =
     document.getElementById('capacity-line-settings');
 
@@ -186,6 +187,28 @@ function renderCapacityLineSettings() {
       .sort((a, b) => b.loadRate - a.loadRate);
 
     const bottleneck = machineLoads[0] || null;
+
+    const groupLoads = calculateGroupLoad()
+      .filter(item => item.line === line)
+      .sort((a, b) => b.loadRate - a.loadRate);
+
+    const groupLoadRows = groupLoads.map(item => {
+      const status =
+        item.loadRate > 100
+          ? '🔴'
+          : item.loadRate >= 85
+            ? '🟡'
+            : '🟢';
+
+      return `
+    <tr>
+      <td>${esc(item.group)}</td>
+      <td>${esc(item.bottleneckMachine || '—')}</td>
+      <td>${item.requiredHours.toFixed(2)} hr</td>
+      <td>${item.loadRate.toFixed(1)} % ${status}</td>
+    </tr>
+  `;
+    }).join('');
 
     const machineLoadRows = machineLoads.map(item => {
       const status =
@@ -250,6 +273,28 @@ ${capacityTime.totalHours.toFixed(2)} hr
 </div>
 
 ${machineLoads.length > 0 ? `
+  ${groupLoads.length > 0 ? `
+  <details open style="margin-top:0.8rem">
+    <summary style="cursor:pointer">
+      加工群組負荷
+    </summary>
+
+    <table style="width:100%;margin-top:0.6rem">
+      <thead>
+        <tr>
+          <th>加工群組</th>
+          <th>瓶頸設備</th>
+          <th>瓶頸需求工時</th>
+          <th>群組負荷率</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        ${groupLoadRows}
+      </tbody>
+    </table>
+  </details>
+` : ''}
   <details style="margin-top:0.8rem">
     <summary style="cursor:pointer">
       查看全部設備負荷
@@ -1299,6 +1344,11 @@ function saveNewEquipment(button) {
   const line =
     row.querySelector('[data-field="line"]').value;
 
+  const group =
+    row.querySelector('[data-field="group"]').value
+      .trim()
+      .toUpperCase();
+
   const critical =
     row.querySelector('[data-field="critical"]').checked;
 
@@ -1319,6 +1369,7 @@ function saveNewEquipment(button) {
     name,
     department,
     line,
+    group,
     critical
   });
 
@@ -1504,17 +1555,63 @@ function calculateMachineRequiredTime() {
 
 function calculateMachineLoad() {
   const machineTime = calculateMachineRequiredTime();
+  const equipment = loadEquipmentMaster();
   const result = {};
 
-  machineTime.forEach(item => {
-    if (!item.line || !item.machine) return;
+  // 先把設備主檔全部設備放進來
+  equipment.forEach(item => {
+    const machine =
+      String(item.machine || '')
+        .trim()
+        .toUpperCase();
 
-    const key = `${item.line}__${item.machine}`;
+    const line =
+      String(item.line || '')
+        .trim()
+        .replace(/\s*LINE$/i, '');
+
+    if (!machine || !line) return;
+
+    const key = `${line}__${machine}`;
+
+    result[key] = {
+      line,
+      machine,
+      requiredHours: 0
+    };
+  });
+
+  // 再把需求工時加到對應設備
+  machineTime.forEach(item => {
+    const machine =
+      String(item.machine || '')
+        .trim()
+        .toUpperCase();
+
+    const machineInfo = equipment.find(
+      equipmentItem =>
+        String(equipmentItem.machine || '')
+          .trim()
+          .toUpperCase() === machine
+    );
+
+    const line =
+      String(
+        machineInfo?.line ||
+        item.line ||
+        ''
+      )
+        .trim()
+        .replace(/\s*LINE$/i, '');
+
+    if (!machine || !line) return;
+
+    const key = `${line}__${machine}`;
 
     if (!result[key]) {
       result[key] = {
-        line: item.line,
-        machine: item.machine,
+        line,
+        machine,
         requiredHours: 0
       };
     }
@@ -1544,6 +1641,54 @@ function calculateMachineLoad() {
     };
   });
 } // calculateMachineLoad 結束
+
+function calculateGroupLoad() {
+  const machineLoads = calculateMachineLoad();
+  const equipment = loadEquipmentMaster();
+  const groups = {};
+
+  machineLoads.forEach(machineLoad => {
+    const machineInfo = equipment.find(
+      item => item.machine === machineLoad.machine
+    );
+
+    const group =
+      String(machineInfo?.group || '')
+        .trim()
+        .toUpperCase();
+
+    if (!group) return;
+
+    const key = `${machineLoad.line}__${group}`;
+
+    if (!groups[key]) {
+      groups[key] = {
+        line: machineLoad.line,
+        group,
+        machines: []
+      };
+    }
+
+    groups[key].machines.push(machineLoad);
+  });
+
+  console.log('加工群組負荷：', groups);
+
+  return Object.values(groups).map(group => {
+    const machines = [...group.machines]
+      .sort((a, b) => b.loadRate - a.loadRate);
+
+    const bottleneck = machines[0];
+
+    return {
+      ...group,
+      machines,
+      bottleneckMachine: bottleneck?.machine || '',
+      loadRate: bottleneck?.loadRate || 0,
+      requiredHours: bottleneck?.requiredHours || 0
+    };
+  });
+} // calculateGroupLoad 結束
 
 function calculateDailyParts() {
   const dailyPlan = loadDailyPlan();
