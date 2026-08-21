@@ -8,7 +8,8 @@
   <meta name="description" content="K1 組車 BOM 管理與部品加工數自動計算工具">
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap"
+  <link
+    href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap"
     rel="stylesheet">
 </head>
 
@@ -186,6 +187,15 @@
           <h2>加工部品主檔</h2>
           <p id="part-line-summary">管理部品加工線別、加工設備與 NT</p>
         </div>
+        <button class="btn btn-primary" onclick="addLineMaster()">
+          ＋ 新增線別／廠商
+        </button>
+        <button class="btn btn-danger" onclick="deleteLineMaster()">
+          － 刪除線別／廠商
+        </button>
+        <button class="btn btn-secondary" onclick="restoreInvalidPart()">
+          🚫 停用部品管理
+        </button>
       </div>
 
       <div class="card">
