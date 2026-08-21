@@ -10,6 +10,8 @@ const CAPACITY_SETTINGS_KEY = 'k1_capacity_line_settings';
 const BOM_FIELDS_KEY = 'k1_bom_fields';
 const LINE_MASTER_KEY = 'k1_line_master';
 const INVALID_PARTS_KEY = 'k1_invalid_parts';
+const SUPPLIER_MASTER_KEY = 'k1_supplier_master';
+const PART_INFO_KEY = 'k1_part_info';
 
 const DEFAULT_PART_TYPES = [
   'L CASE',
@@ -81,7 +83,7 @@ function saveInvalidParts(parts) {
 
 function isInvalidPart(type, code) {
   const invalidParts = loadInvalidParts();
-  const key = `${type}__${code}`;
+  const key = code;
 
   return invalidParts.includes(key);
 } // isInvalidPart 結束
@@ -128,6 +130,32 @@ function loadLineMaster() {
     ? saved
     : [...PROCESS_LINES];
 } // loadLineMaster 結束
+
+function loadSupplierMaster() {
+  return JSON.parse(
+    localStorage.getItem(SUPPLIER_MASTER_KEY) || '[]'
+  );
+} // loadSupplierMaster 結束
+
+function saveSupplierMaster(suppliers) {
+  localStorage.setItem(
+    SUPPLIER_MASTER_KEY,
+    JSON.stringify(suppliers)
+  );
+} // saveSupplierMaster 結束
+
+function loadPartInfo() {
+  return JSON.parse(
+    localStorage.getItem(PART_INFO_KEY) || '{}'
+  );
+} // loadPartInfo 結束
+
+function savePartInfo(data) {
+  localStorage.setItem(
+    PART_INFO_KEY,
+    JSON.stringify(data)
+  );
+} // savePartInfo 結束
 
 function saveLineMaster(lines) {
   localStorage.setItem(
@@ -195,6 +223,97 @@ function addLineMaster() {
 
   toast(`已新增：${value}`, 'success');
 } // addLineMaster 結束
+
+function addSupplierMaster() {
+  const name = prompt(
+    '請輸入素材廠商名稱\n例如：上毅、明鴻'
+  );
+
+  if (!name) return;
+
+  const value = name.trim();
+  if (!value) return;
+
+  const suppliers = loadSupplierMaster();
+
+  const exists = suppliers.some(
+    item =>
+      item.toUpperCase() === value.toUpperCase()
+  );
+
+  if (exists) {
+    toast('此素材廠商已存在', 'error');
+    return;
+  }
+
+  suppliers.push(value);
+
+  suppliers.sort((a, b) =>
+    a.localeCompare(b, 'zh-TW', {
+      numeric: true,
+      sensitivity: 'base'
+    })
+  );
+
+  saveSupplierMaster(suppliers);
+
+  renderPartLineSettings();
+
+  toast(`已新增素材廠商：${value}`, 'success');
+} // addSupplierMaster 結束
+
+function deleteSupplierMaster() {
+  const suppliers = loadSupplierMaster();
+
+  if (suppliers.length === 0) {
+    toast('目前沒有素材廠商', 'error');
+    return;
+  }
+
+  const name = prompt(
+    '請輸入要刪除的素材廠商\n\n' +
+    suppliers.join('\n')
+  );
+
+  if (!name) return;
+
+  const value = name.trim();
+
+  const exists = suppliers.find(
+    item =>
+      item.toUpperCase() === value.toUpperCase()
+  );
+
+  if (!exists) {
+    toast('找不到此素材廠商', 'error');
+    return;
+  }
+
+  const partInfo = loadPartInfo();
+
+  const usedParts = Object.entries(partInfo)
+    .filter(([, info]) => info?.supplier === exists)
+    .map(([partCode]) => partCode);
+
+  if (usedParts.length > 0) {
+    alert(
+      `${exists} 目前仍有 ${usedParts.length} 個部品使用中，請先修改這些部品的素材廠商。`
+    );
+    return;
+  }
+
+  if (!confirm(`確定刪除素材廠商「${exists}」嗎？`)) {
+    return;
+  }
+
+  saveSupplierMaster(
+    suppliers.filter(item => item !== exists)
+  );
+
+  renderPartLineSettings();
+
+  toast(`已刪除素材廠商：${exists}`, 'success');
+} // deleteSupplierMaster 結束
 
 function deleteLineMaster() {
   const lines = loadLineMaster();
@@ -919,10 +1038,15 @@ async function importBOMMaster() {
       const bomRow = {};
 
       PART_TYPES.forEach(type => {
-        bomRow[type] =
+        const value =
           String(row[type] || '')
             .trim()
             .toUpperCase();
+
+        bomRow[type] =
+          /^[\-－–—−]+$/.test(value)
+            ? ''
+            : value;
       });
 
       const hasBOM =
@@ -1855,7 +1979,7 @@ function calculateDailyParts() {
         if (!code) return;
         if (isInvalidPart(partType, code)) return;
 
-        const key = `${partType}__${code}`;
+        const key = code;
 
         if (!result[key]) {
           result[key] = {
@@ -1927,6 +2051,8 @@ function renderPartLineSettings() {
   const data = collectBOMParts();
   const partLines = loadPartLines();
   const partOperations = loadPartOperations();
+  const partInfo = loadPartInfo();
+  const suppliers = loadSupplierMaster();
 
   const tbody = document.getElementById('part-line-tbody');
   const empty = document.getElementById('part-line-empty');
@@ -1948,6 +2074,13 @@ function renderPartLineSettings() {
     return `
     <tr>
       <td>
+        <input
+        type="checkbox"
+        class="part-select-checkbox"
+        value="${esc(item.code)}"
+        >
+      </td>
+      <td>
         <span class="part-code">${esc(item.code)}</span>
       </td>
 
@@ -1967,6 +2100,35 @@ function renderPartLineSettings() {
         </option>
           `).join('')}
         </select>
+      </td>
+
+      <td>
+        <select
+        data-part-code="${esc(item.code)}"
+        onchange="updatePartInfo(this.dataset.partCode, 'supplier', this.value)"
+        style="width:120px"
+        >
+        <option value="">未設定</option>
+
+        ${suppliers.map(supplier => `
+        <option
+        value="${esc(supplier)}"
+        ${partInfo[item.code]?.supplier === supplier ? 'selected' : ''}>
+        ${esc(supplier)}
+        </option>
+        `).join('')}
+        </select>
+      </td>
+
+      <td>
+        <input
+          type="text"
+          data-part-code="${esc(item.code)}"
+          value="${esc(partInfo[item.code]?.owner || '')}"
+          placeholder="擔當人員"
+          onchange="updatePartInfo(this.dataset.partCode, 'owner', this.value)"
+          style="width:120px"
+        >
       </td>
 
       <td>${operations.length}</td>
@@ -2109,6 +2271,48 @@ function savePartMaster() {
   toast('已儲存加工部品資料', 'success');
 } // savePartMaster 結束
 
+function disableSelectedParts() {
+  const checked = [
+    ...document.querySelectorAll(
+      '.part-select-checkbox:checked'
+    )
+  ];
+
+  if (checked.length === 0) {
+    toast('請先勾選要停用的部品', 'error');
+    return;
+  }
+
+  const codes = checked.map(item => item.value);
+
+  if (
+    !confirm(
+      `確定要停用選取的 ${codes.length} 個部品嗎？`
+    )
+  ) {
+    return;
+  }
+
+  const invalidParts = loadInvalidParts();
+
+  codes.forEach(code => {
+    if (!invalidParts.includes(code)) {
+      invalidParts.push(code);
+    }
+  });
+
+  saveInvalidParts(invalidParts);
+
+  renderPartLineSettings();
+  renderDailyParts();
+  renderResult();
+
+  toast(
+    `已停用 ${codes.length} 個部品`,
+    'success'
+  );
+} // disableSelectedParts 結束
+
 function disablePart(type, code) {
   if (
     !confirm(
@@ -2143,9 +2347,11 @@ function restoreInvalidPart() {
   }
 
   const list = invalidParts.map((key, index) => {
-    const [type, code] = key.split('__');
+    const code = key.includes('__')
+      ? key.split('__')[1]
+      : key;
 
-    return `${index + 1}. ${type}｜${code}`;
+    return `${index + 1}. ${code}`;
   });
 
   const input = prompt(
@@ -2167,8 +2373,9 @@ function restoreInvalidPart() {
   }
 
   const restoredKey = invalidParts[index];
-  const [, code] = restoredKey.split('__');
-
+  const code = restoredKey.includes('__')
+    ? restoredKey.split('__')[1]
+    : restoredKey;
   invalidParts.splice(index, 1);
 
   saveInvalidParts(invalidParts);
@@ -2179,6 +2386,25 @@ function restoreInvalidPart() {
 
   toast(`已恢復部品：${code}`, 'success');
 } // restoreInvalidPart 結束
+
+function updatePartInfo(partCode, field, value) {
+  const partInfo = loadPartInfo();
+
+  if (!partInfo[partCode]) {
+    partInfo[partCode] = {
+      supplier: '',
+      owner: ''
+    };
+  }
+
+  partInfo[partCode][field] = value.trim();
+
+  savePartInfo(partInfo);
+
+  renderDailyParts();
+
+  toast(`已儲存 ${partCode} 的資料`, 'success');
+} // updatePartInfo 結束
 
 function updatePartLine(partCode, lineName) {
   const partLines = loadPartLines();
@@ -2258,13 +2484,12 @@ function renderDailyParts() {
 
   empty.style.display = 'none';
   summary.textContent = selectedLine
-    ? `${selectedLine} LINE｜${filteredData.length} 種部品／${dates.length} 個生產日期`
+    ? `${formatLineLabel(selectedLine)}｜${filteredData.length} 種部品／${dates.length} 個生產日期`
     : `${data.length} 種部品／${dates.length} 個生產日期`;
 
   thead.innerHTML = `
     <tr>
       <th>加工線別</th>
-      <th>部品類型</th>
       <th>部品代號</th>
       <th>總數</th>
       ${dates.map(dateKey =>
@@ -2291,7 +2516,7 @@ function renderDailyParts() {
        <tr class="line-group-row"
        onclick="toggleLineGroup('${line}')"
        style="cursor:pointer">
-          <td colspan="${4 + dates.length}"
+          <td colspan="${3 + dates.length}"
               style="text-align:left;font-weight:700">
             ${isCollapsed ? '▶' : '▼'}
             ${lineName}
@@ -2319,13 +2544,6 @@ function renderDailyParts() {
                 `).join('')}
               </select>
             </td>
-
-          <td>
-            <span class="part-type-tag ${PART_TAG_CLASS[item.type]}">
-              ${esc(item.type)}
-            </span>
-          </td>
-
           <td>
             <span class="part-code">${esc(item.code)}</span>
           </td>
@@ -2452,11 +2670,11 @@ function renderResult() {
 
   tbody.innerHTML = data.map((r, i) => `
     <tr>
-      <td style="color:var(--text-muted);font-size:0.8rem">${i + 1}</td>
-      <td><span class="part-type-tag ${PART_TAG_CLASS[r.type]}">${esc(r.type)}</span></td>
       <td><span class="part-code">${esc(r.code)}</span></td>
       <td class="qty-cell">${r.qty}</td>
-      <td style="font-size:0.78rem;color:var(--text-sub)">${r.models.join(', ')}</td>
+      <td style="font-size:0.78rem;color:var(--text-sub)">
+      ${r.models.join(', ')}
+      </td>
     </tr>
   `).join('');
 }
@@ -2467,9 +2685,9 @@ function exportCSV() {
 
   const plan = loadPlan();
   const dateStr = new Date().toLocaleDateString('zh-TW').replace(/\//g, '');
-  const header = '部品類型,部品代號,加工數量,來源機種\n';
+  const header = '部品代號,加工數量,來源機種\n';
   const rows = data.map(r =>
-    `${r.type},${r.code},${r.qty},"${r.models.join(' / ')}"`
+    `${r.code},${r.qty},"${r.models.join(' / ')}"`
   ).join('\n');
 
   const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8' });

@@ -193,6 +193,16 @@
         <button class="btn btn-danger" onclick="deleteLineMaster()">
           － 刪除線別／廠商
         </button>
+        <button class="btn btn-primary" onclick="addSupplierMaster()">
+          ＋ 新增素材廠商
+        </button>
+
+        <button class="btn btn-danger" onclick="deleteSupplierMaster()">
+          － 刪除素材廠商
+        </button>
+        <button class="btn btn-danger" onclick="disableSelectedParts()">
+          🚫 停用選取部品
+        </button>
         <button class="btn btn-secondary" onclick="restoreInvalidPart()">
           🚫 停用部品管理
         </button>
@@ -203,8 +213,11 @@
           <table id="part-line-table">
             <thead>
               <tr>
+                <th>選取</th>
                 <th>部品代號</th>
                 <th>加工線別</th>
+                <th>素材廠商</th>
+                <th>擔當人員</th>
                 <th>OP數量</th>
                 <th>操作</th>
               </tr>
@@ -377,8 +390,6 @@
           <table>
             <thead>
               <tr>
-                <th>#</th>
-                <th>部品類型</th>
                 <th>部品代號</th>
                 <th>加工數量</th>
                 <th>來源機種</th>
