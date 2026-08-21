@@ -187,6 +187,17 @@
           <h2>加工部品主檔</h2>
           <p id="part-line-summary">管理部品加工線別、加工設備與 NT</p>
         </div>
+
+        <input type="file" id="part-master-excel-file" accept=".xlsx,.xls" style="display:none"
+          onchange="importPartMaster()">
+
+        <button class="btn btn-secondary" onclick="document.getElementById('part-master-excel-file').click()">
+          📥 主檔轉入
+        </button>
+
+        <button class="btn btn-success" onclick="exportPartMaster()">
+          📤 主檔轉出
+        </button>
         <button class="btn btn-primary" onclick="addLineMaster()">
           ＋ 新增線別／廠商
         </button>
