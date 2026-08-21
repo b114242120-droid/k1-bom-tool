@@ -2047,6 +2047,247 @@ function collectBOMParts() {
   });
 } // collectBOMParts 結束
 
+function normalizeImportedLine(value) {
+  const text = String(value || '').trim();
+
+  if (!text) return '';
+
+  const base =
+    text.replace(/\s*LINE$/i, '').trim().toUpperCase();
+
+  return PROCESS_LINES.includes(base)
+    ? base
+    : text;
+} // normalizeImportedLine 結束
+
+function exportPartMaster() {
+  const parts = collectBOMParts();
+  const partLines = loadPartLines();
+  const partInfo = loadPartInfo();
+  const lineMaster = loadLineMaster();
+  const supplierMaster = loadSupplierMaster();
+
+  if (parts.length === 0) {
+    toast('尚無加工部品資料可轉出', 'error');
+    return;
+  }
+
+  const partRows = parts.map(item => ({
+    部品代號: item.code,
+    加工線別: partLines[item.code]
+      ? formatLineLabel(partLines[item.code])
+      : '',
+    素材廠商: partInfo[item.code]?.supplier || '',
+    擔當人員: partInfo[item.code]?.owner || ''
+  }));
+
+  const lineRows = lineMaster.map(line => ({
+    加工線別: formatLineLabel(line)
+  }));
+
+  const supplierRows = supplierMaster.map(supplier => ({
+    素材廠商: supplier
+  }));
+
+  const workbook = XLSX.utils.book_new();
+
+  const partSheet =
+    XLSX.utils.json_to_sheet(partRows);
+
+  const lineSheet =
+    XLSX.utils.json_to_sheet(lineRows);
+
+  const supplierSheet =
+    XLSX.utils.json_to_sheet(supplierRows);
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    partSheet,
+    '部品主檔'
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    lineSheet,
+    '加工線別主檔'
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    supplierSheet,
+    '素材廠商主檔'
+  );
+
+  XLSX.writeFile(
+    workbook,
+    '加工部品主檔.xlsx'
+  );
+
+  toast(
+    `加工部品主檔已轉出，共 ${parts.length} 筆部品`,
+    'success'
+  );
+} // exportPartMaster 結束
+
+async function importPartMaster() {
+  const fileInput =
+    document.getElementById('part-master-excel-file');
+
+  const file = fileInput.files[0];
+
+  if (!file) return;
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+
+    const workbook = XLSX.read(arrayBuffer, {
+      type: 'array'
+    });
+
+    const partSheet =
+      workbook.Sheets['部品主檔'];
+
+    if (!partSheet) {
+      toast('找不到「部品主檔」工作表', 'error');
+      fileInput.value = '';
+      return;
+    }
+
+    const partRows =
+      XLSX.utils.sheet_to_json(
+        partSheet,
+        { defval: '' }
+      );
+
+    const newPartLines = {};
+    const newPartInfo = {};
+
+    partRows.forEach(row => {
+      const code =
+        String(row['部品代號'] || '')
+          .trim()
+          .toUpperCase();
+
+      if (!code) return;
+
+      const line =
+        normalizeImportedLine(
+          row['加工線別']
+        );
+
+      const supplier =
+        String(row['素材廠商'] || '').trim();
+
+      const owner =
+        String(row['擔當人員'] || '').trim();
+
+      if (line) {
+        newPartLines[code] = line;
+      }
+
+      newPartInfo[code] = {
+        supplier,
+        owner
+      };
+    });
+
+    const lineSheet =
+      workbook.Sheets['加工線別主檔'];
+
+    let newLines = [...PROCESS_LINES];
+
+    if (lineSheet) {
+      const rows =
+        XLSX.utils.sheet_to_json(
+          lineSheet,
+          { defval: '' }
+        );
+
+      rows.forEach(row => {
+        const line =
+          normalizeImportedLine(
+            row['加工線別']
+          );
+
+        if (
+          line &&
+          !newLines.includes(line)
+        ) {
+          newLines.push(line);
+        }
+      });
+    }
+
+    Object.values(newPartLines).forEach(line => {
+      if (!newLines.includes(line)) {
+        newLines.push(line);
+      }
+    });
+
+    const supplierSheet =
+      workbook.Sheets['素材廠商主檔'];
+
+    const newSuppliers = [];
+
+    if (supplierSheet) {
+      const rows =
+        XLSX.utils.sheet_to_json(
+          supplierSheet,
+          { defval: '' }
+        );
+
+      rows.forEach(row => {
+        const supplier =
+          String(row['素材廠商'] || '').trim();
+
+        if (
+          supplier &&
+          !newSuppliers.includes(supplier)
+        ) {
+          newSuppliers.push(supplier);
+        }
+      });
+    }
+
+    Object.values(newPartInfo).forEach(info => {
+      if (
+        info.supplier &&
+        !newSuppliers.includes(info.supplier)
+      ) {
+        newSuppliers.push(info.supplier);
+      }
+    });
+
+    savePartLines(newPartLines);
+    savePartInfo(newPartInfo);
+    saveLineMaster(newLines);
+    saveSupplierMaster(newSuppliers);
+
+    renderPartLineSettings();
+    renderDailyParts();
+
+    fileInput.value = '';
+
+    toast(
+      `加工部品主檔轉入完成，共 ${partRows.length} 筆`,
+      'success'
+    );
+
+  } catch (error) {
+    console.error(
+      '加工部品主檔轉入失敗：',
+      error
+    );
+
+    fileInput.value = '';
+
+    toast(
+      '加工部品主檔轉入失敗，請確認 Excel 格式',
+      'error'
+    );
+  }
+} // importPartMaster 結束
+
 function renderPartLineSettings() {
   const data = collectBOMParts();
   const partLines = loadPartLines();
