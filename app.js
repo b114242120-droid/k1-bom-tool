@@ -10,6 +10,8 @@ const CAPACITY_SETTINGS_KEY = 'k1_capacity_line_settings';
 const BOM_FIELDS_KEY = 'k1_bom_fields';
 const LINE_MASTER_KEY = 'k1_line_master';
 const INVALID_PARTS_KEY = 'k1_invalid_parts';
+const SUPPLIER_MASTER_KEY = 'k1_supplier_master';
+const PART_INFO_KEY = 'k1_part_info';
 
 const DEFAULT_PART_TYPES = [
   'L CASE',
@@ -60,16 +62,46 @@ function saveBOMFields(fields) {
     JSON.stringify(fields)
   );
 }
+// 機種代號正規化：去頭尾星號、轉大寫、去掉結尾國別，例如 *XA60BA(FR)* → XA60BA
+function normalizeModelCode(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^\*+|\*+$/g, '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s*\([A-Z]{2,3}\)\s*$/, '');
+} // normalizeModelCode 結束
+
+// 以正規化後的機種代號查 BOM
+function buildBOMLookup(bom = loadBOM()) {
+  const lookup = {};
+
+  Object.entries(bom).forEach(([model, row]) => {
+    lookup[normalizeModelCode(model)] = row;
+  });
+
+  return lookup;
+} // buildBOMLookup 結束
+
 function loadPlan() { return JSON.parse(localStorage.getItem(PLAN_KEY) || '[]'); }
 function savePlan(d) { localStorage.setItem(PLAN_KEY, JSON.stringify(d)); }
 function loadPending() { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); }
 function savePending(d) { localStorage.setItem(PENDING_KEY, JSON.stringify(d)); }
 function loadDailyPlan() { return JSON.parse(localStorage.getItem(DAILY_PLAN_KEY) || '{}'); }
 function saveDailyPlan(d) { localStorage.setItem(DAILY_PLAN_KEY, JSON.stringify(d)); }
+// 停用清單一律存「部品代號」；舊版單筆停用曾存成「種類__代號」，讀取時一併轉回代號
 function loadInvalidParts() {
-  return JSON.parse(
+  const saved = JSON.parse(
     localStorage.getItem(INVALID_PARTS_KEY) || '[]'
   );
+
+  return [...new Set(
+    saved.map(key =>
+      String(key).includes('__')
+        ? String(key).split('__').pop()
+        : String(key)
+    )
+  )];
 } // loadInvalidParts 結束
 
 function saveInvalidParts(parts) {
@@ -79,11 +111,10 @@ function saveInvalidParts(parts) {
   );
 } // saveInvalidParts 結束
 
-function isInvalidPart(type, code) {
-  const invalidParts = loadInvalidParts();
-  const key = `${type}__${code}`;
+function isInvalidPart(type, code, invalidSet = null) {
+  const set = invalidSet || new Set(loadInvalidParts());
 
-  return invalidParts.includes(key);
+  return set.has(code);
 } // isInvalidPart 結束
 
 function loadPartLines() {
@@ -129,6 +160,32 @@ function loadLineMaster() {
     : [...PROCESS_LINES];
 } // loadLineMaster 結束
 
+function loadSupplierMaster() {
+  return JSON.parse(
+    localStorage.getItem(SUPPLIER_MASTER_KEY) || '[]'
+  );
+} // loadSupplierMaster 結束
+
+function saveSupplierMaster(suppliers) {
+  localStorage.setItem(
+    SUPPLIER_MASTER_KEY,
+    JSON.stringify(suppliers)
+  );
+} // saveSupplierMaster 結束
+
+function loadPartInfo() {
+  return JSON.parse(
+    localStorage.getItem(PART_INFO_KEY) || '{}'
+  );
+} // loadPartInfo 結束
+
+function savePartInfo(data) {
+  localStorage.setItem(
+    PART_INFO_KEY,
+    JSON.stringify(data)
+  );
+} // savePartInfo 結束
+
 function saveLineMaster(lines) {
   localStorage.setItem(
     LINE_MASTER_KEY,
@@ -163,10 +220,12 @@ function formatLineLabel(line) {
     : line;
 } // formatLineLabel 結束
 
-function addLineMaster() {
-  const name = prompt(
-    '請輸入線別或廠商名稱\n例如：A、B、協力廠商A'
-  );
+async function addLineMaster() {
+  const name = await uiPrompt('自製線填代號（例如 T），協力廠填名稱（例如 宏嘉）', {
+    title: '新增加工線別／廠商',
+    placeholder: '線別或廠商名稱',
+    okText: '新增'
+  });
 
   if (!name) return;
 
@@ -196,7 +255,101 @@ function addLineMaster() {
   toast(`已新增：${value}`, 'success');
 } // addLineMaster 結束
 
-function deleteLineMaster() {
+async function addSupplierMaster() {
+  const name = await uiPrompt('例如：上毅、明鴻', {
+    title: '新增素材廠商',
+    placeholder: '素材廠商名稱',
+    okText: '新增'
+  });
+
+  if (!name) return;
+
+  const value = name.trim();
+  if (!value) return;
+
+  const suppliers = loadSupplierMaster();
+
+  const exists = suppliers.some(
+    item =>
+      item.toUpperCase() === value.toUpperCase()
+  );
+
+  if (exists) {
+    toast('此素材廠商已存在', 'error');
+    return;
+  }
+
+  suppliers.push(value);
+
+  suppliers.sort((a, b) =>
+    a.localeCompare(b, 'zh-TW', {
+      numeric: true,
+      sensitivity: 'base'
+    })
+  );
+
+  saveSupplierMaster(suppliers);
+
+  renderPartLineSettings();
+
+  toast(`已新增素材廠商：${value}`, 'success');
+} // addSupplierMaster 結束
+
+async function deleteSupplierMaster() {
+  const suppliers = loadSupplierMaster();
+
+  if (suppliers.length === 0) {
+    toast('目前沒有素材廠商', 'error');
+    return;
+  }
+
+  const name = await uiPrompt('選擇要刪除的素材廠商', {
+    title: '刪除素材廠商',
+    options: suppliers,
+    okText: '下一步'
+  });
+
+  if (!name) return;
+
+  const value = name.trim();
+
+  const exists = suppliers.find(
+    item =>
+      item.toUpperCase() === value.toUpperCase()
+  );
+
+  if (!exists) {
+    toast('找不到此素材廠商', 'error');
+    return;
+  }
+
+  const partInfo = loadPartInfo();
+
+  const usedParts = Object.entries(partInfo)
+    .filter(([, info]) => info?.supplier === exists)
+    .map(([partCode]) => partCode);
+
+  if (usedParts.length > 0) {
+    await uiAlert(
+      `${exists} 目前仍有 ${usedParts.length} 個部品使用中，請先修改這些部品的素材廠商。`
+    );
+    return;
+  }
+
+  if (!await uiConfirm(`確定刪除素材廠商「${exists}」嗎？`, { danger: true, okText: '刪除' })) {
+    return;
+  }
+
+  saveSupplierMaster(
+    suppliers.filter(item => item !== exists)
+  );
+
+  renderPartLineSettings();
+
+  toast(`已刪除素材廠商：${exists}`, 'success');
+} // deleteSupplierMaster 結束
+
+async function deleteLineMaster() {
   const lines = loadLineMaster();
 
   const customLines = lines.filter(
@@ -208,10 +361,11 @@ function deleteLineMaster() {
     return;
   }
 
-  const name = prompt(
-    '請輸入要刪除的線別或廠商名稱\n\n' +
-    customLines.join('\n')
-  );
+  const name = await uiPrompt('只能刪除自訂的線別或協力廠，A～S 內建線別不能刪除', {
+    title: '刪除加工線別／廠商',
+    options: customLines,
+    okText: '下一步'
+  });
 
   if (!name) return;
 
@@ -234,13 +388,13 @@ function deleteLineMaster() {
     .map(([partCode]) => partCode);
 
   if (usedParts.length > 0) {
-    alert(
+    await uiAlert(
       `${exists} 目前仍有 ${usedParts.length} 個部品使用中，請先將這些部品改到其他線別後再刪除。`
     );
     return;
   }
 
-  if (!confirm(`確定要刪除「${exists}」嗎？`)) {
+  if (!await uiConfirm(`確定要刪除「${exists}」嗎？`, { danger: true, okText: '刪除' })) {
     return;
   }
 
@@ -308,8 +462,13 @@ function calculateCapacityTime(setting) {
   };
 } // calculateCapacityTime 結束
 
+function loadStatus(rate) {
+  if (rate > 100) return { cls: 'over', pill: 'pill-danger', text: '超載' };
+  if (rate >= 85) return { cls: 'warn', pill: 'pill-warn', text: '注意' };
+  return { cls: '', pill: 'pill-ok', text: '正常' };
+} // loadStatus 結束
+
 function renderCapacityLineSettings() {
-  calculateGroupLoad();
   const container =
     document.getElementById('capacity-line-settings');
 
@@ -319,275 +478,133 @@ function renderCapacityLineSettings() {
 
   if (lines.length === 0) {
     container.innerHTML = `
-      <div class="empty-state">
+      <div class="empty-state card">
+        <div class="empty-icon">${icon('gauge')}</div>
         <p>尚未建立 LINE 資料</p>
       </div>
     `;
     return;
   }
 
+  // 全部負荷只算一次，各線再各自篩選
+  const allMachineLoads = calculateMachineLoad();
+  const allGroupLoads = calculateGroupLoad(allMachineLoads);
+  const openLines = new Set(
+    [...container.querySelectorAll('details.cap-card[open]')].map(el => el.dataset.line)
+  );
+
+  const numberField = (line, field, label, value, step = 1) => `
+    <label>${label}
+      <input type="number" min="0" step="${step}" value="${value}" data-line="${esc(line)}" data-field="${field}">
+    </label>`;
+
+  const shift = (line, key, name, setting, fields) => `
+    <div class="shift">
+      <label class="shift-head">
+        <input type="checkbox" data-line="${esc(line)}" data-field="${key}Enabled" ${setting[`${key}Enabled`] ? 'checked' : ''}>
+        ${name}
+      </label>
+      <div class="shift-fields">
+        ${fields.map(([field, label, step]) => numberField(line, field, label, setting[field], step)).join('')}
+      </div>
+    </div>`;
+
   container.innerHTML = lines.map(line => {
     const setting = getCapacityLineSetting(line);
     const capacityTime = calculateCapacityTime(setting);
 
-    const machineLoads = calculateMachineLoad()
+    const machineLoads = allMachineLoads
       .filter(item => item.line === line)
       .sort((a, b) => b.loadRate - a.loadRate);
 
-    const bottleneck = machineLoads[0] || null;
-
-    const groupLoads = calculateGroupLoad()
+    const groupLoads = allGroupLoads
       .filter(item => item.line === line)
       .sort((a, b) => b.loadRate - a.loadRate);
 
-    const groupLoadRows = groupLoads.map(item => {
-      const status =
-        item.loadRate > 100
-          ? '🔴'
-          : item.loadRate >= 85
-            ? '🟡'
-            : '🟢';
+    const bottleneck = machineLoads.find(item => item.requiredHours > 0) || null;
+    const rate = bottleneck ? bottleneck.loadRate : 0;
+    const status = loadStatus(rate);
 
-      return `
-    <tr>
-      <td>${esc(item.group)}</td>
-      <td>${esc(item.bottleneckMachine || '—')}</td>
-      <td>${item.requiredHours.toFixed(2)} hr</td>
-      <td>${item.loadRate.toFixed(1)} % ${status}</td>
-    </tr>
-  `;
-    }).join('');
+    const rateCell = value => {
+      const s = loadStatus(value);
+      return `<td class="num"><span class="pill ${s.pill}">${value.toFixed(1)}%</span></td>`;
+    };
 
-    const machineLoadRows = machineLoads.map(item => {
-      const status =
-        item.loadRate > 100
-          ? '🔴'
-          : item.loadRate >= 85
-            ? '🟡'
-            : '🟢';
+    const groupTable = groupLoads.length ? `
+      <div class="cap-subtitle">加工群組負荷</div>
+      <div class="cap-table table-wrap">
+        <table>
+          <thead><tr><th>群組</th><th>瓶頸設備</th><th class="num">需求工時</th><th class="num">負荷率</th></tr></thead>
+          <tbody>
+            ${groupLoads.map(item => `
+              <tr>
+                <td>${esc(item.group)}</td>
+                <td class="mono">${esc(item.bottleneckMachine || '—')}</td>
+                <td class="num mono">${item.requiredHours.toFixed(2)} hr</td>
+                ${rateCell(item.loadRate)}
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : '';
 
-      return `
-    <tr>
-      <td>${esc(item.machine)}</td>
-      <td>${item.requiredHours.toFixed(2)} hr</td>
-      <td>${item.loadRate.toFixed(1)} % ${status}</td>
-    </tr>
-  `;
-    }).join('');
-
-    const loadStatus =
-      !bottleneck
-        ? '⚪ 尚無資料'
-        : bottleneck.loadRate > 100
-          ? '🔴 超載'
-          : bottleneck.loadRate >= 85
-            ? '🟡 注意'
-            : '🟢 正常';
+    const machineTable = machineLoads.length ? `
+      <div class="cap-subtitle">設備負荷（${machineLoads.length} 台）</div>
+      <div class="cap-table table-wrap" style="max-height:320px">
+        <table>
+          <thead><tr><th>設備</th><th class="num">需求工時</th><th class="num">負荷率</th></tr></thead>
+          <tbody>
+            ${machineLoads.map(item => `
+              <tr>
+                <td class="mono">${esc(item.machine)}</td>
+                <td class="num mono">${item.requiredHours.toFixed(2)} hr</td>
+                ${rateCell(item.loadRate)}
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : `
+      <p class="card-sub" style="margin-top:12px">這條線還沒有設備需求工時：需要每日部品計畫，以及部品的 OP／NT 與設備對應。</p>`;
 
     return `
-    <details class="card" style="margin-top:1rem">
-
-      <summary style="cursor:pointer; font-weight:700">
-        ${esc(line)} LINE
+    <details class="cap-card" data-line="${esc(line)}" ${openLines.has(line) ? 'open' : ''}>
+      <summary>
+        ${icon('chevron', 'group-caret')}
+        <span class="cap-line">${esc(formatLineLabel(line))}</span>
+        <span class="cap-meta">瓶頸 <strong>${bottleneck ? esc(bottleneck.machine) : '—'}</strong></span>
+        <span class="meter">
+          <span class="meter-track"><span class="meter-fill ${status.cls}" style="--v:${(rate / 100).toFixed(3)}"></span></span>
+          <span class="meter-value">${bottleneck ? `${rate.toFixed(1)}%` : '—'}</span>
+        </span>
+        ${bottleneck
+          ? `<span class="pill ${status.pill}"><span class="dot"></span>${status.text}</span>`
+          : '<span class="pill">尚無資料</span>'}
       </summary>
 
-      <div style="margin-top:1rem">
-
-        <div style="margin-bottom:1rem">
-          <strong>每日有效工時：</strong>
-          ${capacityTime.dailyHours.toFixed(2)} hr
-
-          <br>
-
-          <strong>期間總有效工時：</strong>
-${capacityTime.totalHours.toFixed(2)} hr
-
-<hr style="margin:0.8rem 0">
-
-<div>
-  <strong>瓶頸設備：</strong>
-  ${bottleneck ? esc(bottleneck.machine) : '尚無資料'}
-</div>
-
-<div>
-  <strong>需求工時：</strong>
-  ${bottleneck ? bottleneck.requiredHours.toFixed(2) : '0.00'} hr
-</div>
-
-<div>
-  <strong>設備負荷率：</strong>
-  ${bottleneck ? bottleneck.loadRate.toFixed(1) : '0.0'} %
-  &nbsp; ${loadStatus}
-</div>
-
-${machineLoads.length > 0 ? `
-  ${groupLoads.length > 0 ? `
-  <details open style="margin-top:0.8rem">
-    <summary style="cursor:pointer">
-      加工群組負荷
-    </summary>
-
-    <table style="width:100%;margin-top:0.6rem">
-      <thead>
-        <tr>
-          <th>加工群組</th>
-          <th>瓶頸設備</th>
-          <th>瓶頸需求工時</th>
-          <th>群組負荷率</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        ${groupLoadRows}
-      </tbody>
-    </table>
-  </details>
-` : ''}
-  <details style="margin-top:0.8rem">
-    <summary style="cursor:pointer">
-      查看全部設備負荷
-    </summary>
-
-    <table style="width:100%;margin-top:0.6rem">
-      <thead>
-        <tr>
-          <th>設備</th>
-          <th>需求工時</th>
-          <th>負荷率</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        ${machineLoadRows}
-      </tbody>
-    </table>
-  </details>
-` : ''}
-        </div>
-        <div class="form-group">
-          <label>出勤天數</label>
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value="${setting.attendanceDays}"
-            data-line="${esc(line)}"
-            data-field="attendanceDays">
+      <div class="cap-body">
+        <div>
+          <div class="cap-stats">
+            <div class="cap-stat"><span>每日有效工時</span><strong>${capacityTime.dailyHours.toFixed(2)} hr</strong></div>
+            <div class="cap-stat"><span>期間有效工時</span><strong>${capacityTime.totalHours.toFixed(1)} hr</strong></div>
+            <div class="cap-stat"><span>瓶頸需求工時</span><strong>${bottleneck ? bottleneck.requiredHours.toFixed(1) : '0.0'} hr</strong></div>
+          </div>
+          ${groupTable}
+          ${machineTable}
         </div>
 
-        <h4 style="margin-top:1rem">班別設定</h4>
+        <div class="cap-form">
+          <div class="form-group">
+            <label>出勤天數</label>
+            <input type="number" min="0" step="1" value="${setting.attendanceDays}" data-line="${esc(line)}" data-field="attendanceDays">
+          </div>
 
-        <label>
-          <input
-            type="checkbox"
-            data-line="${esc(line)}"
-            data-field="morningEnabled"
-            ${setting.morningEnabled ? 'checked' : ''}>
-          早班
-        </label>
+          ${shift(line, 'morning', '早班', setting, [['morningHours', '時數（hr）', 0.5], ['morningBreak', '休息（min）'], ['morningMeal', '午餐（min）']])}
+          ${shift(line, 'evening', '中班', setting, [['eveningHours', '時數（hr）', 0.5], ['eveningMeal', '用餐（min）'], ['eveningBreak', '休息（min）']])}
+          ${shift(line, 'night', '大夜', setting, [['nightHours', '時數（hr）', 0.5], ['nightBreak', '休息（min）']])}
 
-        <div style="margin:0.5rem 0 1rem 1.5rem">
-          班別時間
-          <input
-            type="number"
-            value="${setting.morningHours}"
-            step="0.5"
-            data-line="${esc(line)}"
-            data-field="morningHours">
-          hr
-
-          休息
-          <input
-            type="number"
-            value="${setting.morningBreak}"
-            data-line="${esc(line)}"
-            data-field="morningBreak">
-          min
-
-          午餐
-          <input
-            type="number"
-            value="${setting.morningMeal}"
-            data-line="${esc(line)}"
-            data-field="morningMeal">
-          min
+          <button class="btn btn-primary btn-block" style="margin-top:12px" data-line="${esc(line)}" onclick="saveCapacityLineSetting(this)">
+            ${icon('check')}儲存 ${esc(formatLineLabel(line))} 設定
+          </button>
         </div>
-
-
-        <label>
-          <input
-            type="checkbox"
-            data-line="${esc(line)}"
-            data-field="eveningEnabled"
-            ${setting.eveningEnabled ? 'checked' : ''}>
-          中班
-        </label>
-
-        <div style="margin:0.5rem 0 1rem 1.5rem">
-          班別時間
-          <input
-            type="number"
-            value="${setting.eveningHours}"
-            step="0.5"
-            data-line="${esc(line)}"
-            data-field="eveningHours">
-          hr
-
-          用餐
-          <input
-            type="number"
-            value="${setting.eveningMeal}"
-            data-line="${esc(line)}"
-            data-field="eveningMeal">
-          min
-
-          休息
-          <input
-            type="number"
-            value="${setting.eveningBreak}"
-            data-line="${esc(line)}"
-            data-field="eveningBreak">
-          min
-        </div>
-
-
-        <label>
-          <input
-            type="checkbox"
-            data-line="${esc(line)}"
-            data-field="nightEnabled"
-            ${setting.nightEnabled ? 'checked' : ''}>
-          大夜
-        </label>
-
-        <div style="margin:0.5rem 0 1rem 1.5rem">
-          班別時間
-          <input
-            type="number"
-            value="${setting.nightHours}"
-            step="0.5"
-            data-line="${esc(line)}"
-            data-field="nightHours">
-          hr
-
-          休息
-          <input
-            type="number"
-            value="${setting.nightBreak}"
-            data-line="${esc(line)}"
-            data-field="nightBreak">
-          min
-        </div>
-        <button
-          class="btn btn-primary"
-          style="margin-top:1rem"
-          data-line="${esc(line)}"
-          onclick="saveCapacityLineSetting(this)">
-          儲存設定
-        </button>
-
       </div>
-
     </details>
     `;
   }).join('');
@@ -660,7 +677,12 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    document.getElementById('crumb-current').textContent = btn.querySelector('span').textContent;
+    toggleSidebar(false);
+    window.scrollTo({ top: 0 });
+    try { localStorage.setItem('k1_last_tab', btn.dataset.tab); } catch (e) { /* 忽略 */ }
     if (btn.dataset.tab === 'daily') renderDailyParts();
+    if (btn.dataset.tab === 'line-load') renderLineLoad();
     if (btn.dataset.tab === 'part-lines') renderPartLineSettings();
     if (btn.dataset.tab === 'equipment') renderEquipmentMaster();
     if (btn.dataset.tab === 'machine-time') renderMachineRequiredTime();
@@ -684,7 +706,7 @@ function renderBOM() {
         <th>${esc(type)}</th>
       `).join('')}
 
-      <th>操作</th>
+      <th class="col-actions"></th>
     </tr>
   `;
 
@@ -727,18 +749,18 @@ function renderBOM() {
     return `<tr>
       <td><span class="model-code">${esc(model)}</span></td>
       ${cells}
-      <td>
-        <div style="display:flex;gap:0.4rem">
-          <button class="btn btn-secondary btn-icon btn-sm" onclick="openEditModal('${esc(model)}')">✏️</button>
-          <button class="btn btn-danger btn-icon btn-sm" onclick="deleteModel('${esc(model)}')">🗑️</button>
+      <td class="col-actions">
+        <div class="row-actions">
+          <button class="btn btn-ghost btn-icon btn-sm" title="編輯" aria-label="編輯 ${esc(model)}" onclick="openEditModal('${jsArg(model)}')">${icon('pencil')}</button>
+          <button class="btn btn-danger-ghost btn-icon btn-sm" title="刪除" aria-label="刪除 ${esc(model)}" onclick="deleteModel('${jsArg(model)}')">${icon('trash')}</button>
         </div>
       </td>
     </tr>`;
   }).join('');
 }
 
-function deleteModel(model) {
-  if (!confirm(`確定刪除機種「${model}」的 BOM 資料？`)) return;
+async function deleteModel(model) {
+  if (!await uiConfirm(`機種「${model}」的 BOM 會被刪除；若它在生產計畫中，台數會移回「待建立 BOM」。`, { title: '刪除機種', danger: true, okText: '刪除' })) return;
 
   const bom = loadBOM();
   const plan = loadPlan();
@@ -919,10 +941,15 @@ async function importBOMMaster() {
       const bomRow = {};
 
       PART_TYPES.forEach(type => {
-        bomRow[type] =
+        const value =
           String(row[type] || '')
             .trim()
             .toUpperCase();
+
+        bomRow[type] =
+          /^[\-－–—−]+$/.test(value)
+            ? ''
+            : value;
       });
 
       const hasBOM =
@@ -941,22 +968,42 @@ async function importBOMMaster() {
 
     saveBOM(bom);
 
+    // 待建立機種有了 BOM 之後，台數移入生產計畫（與「建立 BOM」視窗相同）
     const pending = loadPending();
+    const plan = loadPlan();
+    let movedCount = 0;
 
-    const remainingPending = pending.filter(
-      item => !bom[item.model]
-    );
+    const remainingPending = pending.filter(item => {
+      if (!bom[item.model]) return true;
 
+      const existing = plan.find(
+        planItem => planItem.model === item.model
+      );
+
+      if (existing) {
+        existing.qty += item.qty;
+      } else {
+        plan.push({ model: item.model, qty: item.qty });
+      }
+
+      movedCount++;
+      return false;
+    });
+
+    savePlan(plan);
     savePending(remainingPending);
 
     renderBOM();
+    renderPlan();
     renderPending();
     refreshPlanSelect();
+    renderResult();
 
     fileInput.value = '';
 
     toast(
-      `BOM 轉入完成｜新增 ${addedCount} 筆｜更新 ${updatedCount} 筆`,
+      `BOM 轉入完成｜新增 ${addedCount} 筆｜更新 ${updatedCount} 筆` +
+      (movedCount ? `｜${movedCount} 個待建立機種已加入生產計畫` : ''),
       'success'
     );
 
@@ -1119,8 +1166,8 @@ function removePlanItem(model) {
   toast('已移除 ' + model, 'success');
 }
 
-function clearPlan() {
-  if (!confirm('確定清空生產計畫與每日部品計畫？')) return;
+async function clearPlan() {
+  if (!await uiConfirm('生產計畫、待建立 BOM 與每日部品計畫（含所有月份）都會清空，加工線負荷也會歸零。', { title: '清空計畫', danger: true, okText: '全部清空' })) return;
 
   savePlan([]);
   savePending([]);
@@ -1129,6 +1176,7 @@ function clearPlan() {
   renderPlan();
   renderPending();
   renderDailyParts();
+  renderLineLoad();
   renderResult();
 
   toast('已清空生產計畫與每日部品計畫', 'success');
@@ -1156,7 +1204,7 @@ function renderPlan() {
         <span class="plan-item-qty">生產數量</span>
         <span class="qty-badge">${p.qty} 台</span>
       </div>
-      <button class="btn btn-danger btn-icon btn-sm" onclick="removePlanItem('${esc(p.model)}')">✕</button>
+      <button class="btn btn-ghost btn-icon btn-sm" title="移除" aria-label="移除 ${esc(p.model)}" onclick="removePlanItem('${jsArg(p.model)}')">${icon('x')}</button>
     </div>
   `).join('');
 }
@@ -1185,7 +1233,7 @@ function renderPending() {
         <span class="plan-item-qty">尚未建立 BOM</span>
         <span class="qty-badge">${item.qty} 台</span>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="openPendingBOM('${esc(item.model)}')">＋ 建立 BOM</button>
+      <button class="btn btn-secondary btn-sm" onclick="openPendingBOM('${jsArg(item.model)}')">${icon('plus')}建立 BOM</button>
     </div>
   `).join('');
 } // renderPending 結束
@@ -1237,27 +1285,20 @@ function renderEquipmentMaster() {
 
     <td>${esc(item.department || '—')}</td>
 
-    <td>${esc(item.line || '—')} LINE</td>
+    <td>${item.line ? esc(formatLineLabel(item.line)) : '—'}</td>
 
     <td>${esc(item.group || '—')}</td>
 
-    <td>${item.critical ? '✅ 是' : '— 否'}</td>
+    <td>${item.critical ? '<span class="pill pill-accent"><span class="dot"></span>關鍵</span>' : '<span class="muted">—</span>'}</td>
 
-    <td>
-  <button
-    class="btn btn-secondary btn-sm"
-    data-machine="${esc(item.machine)}"
-    onclick="editEquipment(this)">
-    編輯
-  </button>
-
-  <button
-    class="btn btn-danger btn-sm"
-    data-machine="${esc(item.machine)}"
-    onclick="deleteEquipment(this.dataset.machine)">
-    刪除
-  </button>
-</td>
+    <td class="col-actions">
+      <div class="row-actions">
+        <button class="btn btn-ghost btn-icon btn-sm" title="編輯" aria-label="編輯 ${esc(item.machine)}"
+          data-machine="${esc(item.machine)}" onclick="editEquipment(this)">${icon('pencil')}</button>
+        <button class="btn btn-danger-ghost btn-icon btn-sm" title="刪除" aria-label="刪除 ${esc(item.machine)}"
+          data-machine="${esc(item.machine)}" onclick="deleteEquipment(this.dataset.machine)">${icon('trash')}</button>
+      </div>
+    </td>
   </tr>
 `).join('');
 } // renderEquipmentMaster 結束
@@ -1275,6 +1316,7 @@ function exportEquipmentMaster() {
     設備名稱: item.name || '',
     所屬部門: item.department || '',
     所屬LINE: item.line || '',
+    設備群組: item.group || '',
     關鍵設備: item.critical ? '是' : '否'
   }));
 
@@ -1348,6 +1390,13 @@ async function importEquipmentMaster() {
           .trim()
           .toUpperCase();
 
+      // 舊版轉出檔沒有「設備群組」欄，這時保留系統內原本的群組
+      const hasGroupColumn = '設備群組' in row;
+      const group =
+        String(row['設備群組'] || '')
+          .trim()
+          .toUpperCase();
+
       if (!machine) return;
 
       const critical =
@@ -1364,12 +1413,14 @@ async function importEquipmentMaster() {
         existing.department = department;
         existing.line = line;
         existing.critical = critical;
+        if (hasGroupColumn) existing.group = group;
       } else {
         equipment.push({
           machine,
           name,
           department,
           line,
+          group,
           critical
         });
       }
@@ -1432,10 +1483,8 @@ function addEquipment() {
           <option value="">選擇 LINE</option>
 
  ${getProcessLines().map(line => `
-  <option
-    value="${line}"
-    ${partLines[item.code] === line ? 'selected' : ''}>
-    ${formatLineLabel(line)}
+  <option value="${esc(line)}">
+    ${esc(formatLineLabel(line))}
   </option>
 `).join('')}
         </select>
@@ -1455,18 +1504,11 @@ function addEquipment() {
           checked>
       </td>
 
-      <td>
-        <button
-          class="btn btn-primary btn-sm"
-          onclick="saveNewEquipment(this)">
-          儲存
-        </button>
-
-        <button
-          class="btn btn-secondary btn-sm"
-          onclick="renderEquipmentMaster()">
-          取消
-        </button>
+      <td class="col-actions">
+        <div class="row-actions">
+          <button class="btn btn-primary btn-sm" onclick="saveNewEquipment(this)">${icon('check')}儲存</button>
+          <button class="btn btn-ghost btn-sm" onclick="renderEquipmentMaster()">取消</button>
+        </div>
       </td>
 
     </tr>
@@ -1511,6 +1553,11 @@ function saveNewEquipment(button) {
 
   if (!machine || !name || !department || !line) {
     toast('請完整輸入管理編號、設備名稱、所屬部門與加工線', 'error');
+    return;
+  }
+
+  if (data.some(item => item.machine === machine)) {
+    toast(`管理編號 ${machine} 已存在`, 'error');
     return;
   }
 
@@ -1564,9 +1611,9 @@ function editEquipment(button) {
       <select data-field="line">
         ${getProcessLines().map(line => `
           <option
-            value="${line}"
+            value="${esc(line)}"
             ${item.line === line ? 'selected' : ''}>
-            ${line} LINE
+            ${esc(formatLineLabel(line))}
           </option>
         `).join('')}
       </select>
@@ -1587,19 +1634,11 @@ function editEquipment(button) {
         ${item.critical ? 'checked' : ''}>
     </td>
 
-    <td>
-      <button
-        class="btn btn-primary btn-sm"
-        data-machine="${esc(item.machine)}"
-        onclick="saveEquipmentEdit(this)">
-        儲存
-      </button>
-
-      <button
-        class="btn btn-secondary btn-sm"
-        onclick="renderEquipmentMaster()">
-        取消
-      </button>
+    <td class="col-actions">
+      <div class="row-actions">
+        <button class="btn btn-primary btn-sm" data-machine="${esc(item.machine)}" onclick="saveEquipmentEdit(this)">${icon('check')}儲存</button>
+        <button class="btn btn-ghost btn-sm" onclick="renderEquipmentMaster()">取消</button>
+      </div>
     </td>
   `;
 } // editEquipment 結束
@@ -1652,8 +1691,8 @@ function saveEquipmentEdit(button) {
   toast('設備資料已更新', 'success');
 } // saveEquipmentEdit 結束
 
-function deleteEquipment(machine) {
-  if (!confirm(`確定刪除設備「${machine}」？`)) return;
+async function deleteEquipment(machine) {
+  if (!await uiConfirm(`確定刪除設備「${machine}」？`, { title: '刪除設備', danger: true, okText: '刪除' })) return;
 
   const data =
     loadEquipmentMaster()
@@ -1792,8 +1831,7 @@ function calculateMachineLoad() {
   });
 } // calculateMachineLoad 結束
 
-function calculateGroupLoad() {
-  const machineLoads = calculateMachineLoad();
+function calculateGroupLoad(machineLoads = calculateMachineLoad()) {
   const equipment = loadEquipmentMaster();
   const groups = {};
 
@@ -1822,8 +1860,6 @@ function calculateGroupLoad() {
     groups[key].machines.push(machineLoad);
   });
 
-  console.log('加工群組負荷：', groups);
-
   return Object.values(groups).map(group => {
     const machines = [...group.machines]
       .sort((a, b) => b.loadRate - a.loadRate);
@@ -1842,20 +1878,21 @@ function calculateGroupLoad() {
 
 function calculateDailyParts() {
   const dailyPlan = loadDailyPlan();
-  const bom = loadBOM();
+  const bomLookup = buildBOMLookup();
+  const invalidSet = new Set(loadInvalidParts());
   const result = {};
 
   Object.entries(dailyPlan).forEach(([dateKey, models]) => {
     Object.entries(models).forEach(([model, qty]) => {
-      const modelBOM = bom[model];
+      const modelBOM = bomLookup[normalizeModelCode(model)];
       if (!modelBOM) return;
 
       PART_TYPES.forEach(partType => {
         const code = modelBOM[partType];
         if (!code) return;
-        if (isInvalidPart(partType, code)) return;
+        if (isInvalidPart(partType, code, invalidSet)) return;
 
-        const key = `${partType}__${code}`;
+        const key = code;
 
         if (!result[key]) {
           result[key] = {
@@ -1890,13 +1927,14 @@ function formatDailyDate(dateKey) {
 
 function collectBOMParts() {
   const bom = loadBOM();
+  const invalidSet = new Set(loadInvalidParts());
   const parts = {};
 
   Object.entries(bom).forEach(([model, row]) => {
     PART_TYPES.forEach(type => {
       const code = String(row[type] || '').trim();
       if (!code) return;
-      if (isInvalidPart(type, code)) return;
+      if (isInvalidPart(type, code, invalidSet)) return;
 
       const key = `${type}__${code}`;
 
@@ -1923,10 +1961,298 @@ function collectBOMParts() {
   });
 } // collectBOMParts 結束
 
+function normalizeImportedLine(value) {
+  const text = String(value || '').trim();
+
+  if (!text) return '';
+
+  const base =
+    text.replace(/\s*LINE$/i, '').trim().toUpperCase();
+
+  return PROCESS_LINES.includes(base)
+    ? base
+    : text;
+} // normalizeImportedLine 結束
+
+function exportPartMaster() {
+  const parts = collectBOMParts();
+  const partLines = loadPartLines();
+  const partInfo = loadPartInfo();
+  const lineMaster = loadLineMaster();
+  const supplierMaster = loadSupplierMaster();
+
+  if (parts.length === 0) {
+    toast('尚無加工部品資料可轉出', 'error');
+    return;
+  }
+
+  const partRows = parts.map(item => ({
+    部品代號: item.code,
+    加工線別: partLines[item.code]
+      ? formatLineLabel(partLines[item.code])
+      : '',
+    素材廠商: partInfo[item.code]?.supplier || '',
+    擔當人員: partInfo[item.code]?.owner || ''
+  }));
+
+  const lineRows = lineMaster.map(line => ({
+    加工線別: formatLineLabel(line)
+  }));
+
+  const supplierRows = supplierMaster.map(supplier => ({
+    素材廠商: supplier
+  }));
+
+  const workbook = XLSX.utils.book_new();
+
+  const partSheet =
+    XLSX.utils.json_to_sheet(partRows);
+
+  const lineSheet =
+    XLSX.utils.json_to_sheet(lineRows);
+
+  const supplierSheet =
+    XLSX.utils.json_to_sheet(supplierRows);
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    partSheet,
+    '部品主檔'
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    lineSheet,
+    '加工線別主檔'
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    supplierSheet,
+    '素材廠商主檔'
+  );
+
+  XLSX.writeFile(
+    workbook,
+    '加工部品主檔.xlsx'
+  );
+
+  toast(
+    `加工部品主檔已轉出，共 ${parts.length} 筆部品`,
+    'success'
+  );
+} // exportPartMaster 結束
+
+async function importPartMaster() {
+  const fileInput =
+    document.getElementById('part-master-excel-file');
+
+  const file = fileInput.files[0];
+
+  if (!file) return;
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+
+    const workbook = XLSX.read(arrayBuffer, {
+      type: 'array'
+    });
+
+    const partSheet =
+      workbook.Sheets['部品主檔'];
+
+    if (!partSheet) {
+      toast('找不到「部品主檔」工作表', 'error');
+      fileInput.value = '';
+      return;
+    }
+
+    const partRows =
+      XLSX.utils.sheet_to_json(
+        partSheet,
+        { defval: '' }
+      );
+
+    const newPartLines = {};
+    const newPartInfo = {};
+
+    partRows.forEach(row => {
+      const code =
+        String(row['部品代號'] || '')
+          .trim()
+          .toUpperCase();
+
+      if (!code) return;
+
+      const line =
+        normalizeImportedLine(
+          row['加工線別']
+        );
+
+      const supplier =
+        String(row['素材廠商'] || '').trim();
+
+      const owner =
+        String(row['擔當人員'] || '').trim();
+
+      if (line) {
+        newPartLines[code] = line;
+      }
+
+      newPartInfo[code] = {
+        supplier,
+        owner
+      };
+    });
+
+    const lineSheet =
+      workbook.Sheets['加工線別主檔'];
+
+    let newLines = [...PROCESS_LINES];
+
+    if (lineSheet) {
+      const rows =
+        XLSX.utils.sheet_to_json(
+          lineSheet,
+          { defval: '' }
+        );
+
+      rows.forEach(row => {
+        const line =
+          normalizeImportedLine(
+            row['加工線別']
+          );
+
+        if (
+          line &&
+          !newLines.includes(line)
+        ) {
+          newLines.push(line);
+        }
+      });
+    }
+
+    Object.values(newPartLines).forEach(line => {
+      if (!newLines.includes(line)) {
+        newLines.push(line);
+      }
+    });
+
+    const supplierSheet =
+      workbook.Sheets['素材廠商主檔'];
+
+    const newSuppliers = [];
+
+    if (supplierSheet) {
+      const rows =
+        XLSX.utils.sheet_to_json(
+          supplierSheet,
+          { defval: '' }
+        );
+
+      rows.forEach(row => {
+        const supplier =
+          String(row['素材廠商'] || '').trim();
+
+        if (
+          supplier &&
+          !newSuppliers.includes(supplier)
+        ) {
+          newSuppliers.push(supplier);
+        }
+      });
+    }
+
+    Object.values(newPartInfo).forEach(info => {
+      if (
+        info.supplier &&
+        !newSuppliers.includes(info.supplier)
+      ) {
+        newSuppliers.push(info.supplier);
+      }
+    });
+
+    savePartLines(newPartLines);
+    savePartInfo(newPartInfo);
+    saveLineMaster(newLines);
+    saveSupplierMaster(newSuppliers);
+
+    renderPartLineSettings();
+    renderDailyParts();
+
+    fileInput.value = '';
+
+    toast(
+      `加工部品主檔轉入完成，共 ${partRows.length} 筆`,
+      'success'
+    );
+
+  } catch (error) {
+    console.error(
+      '加工部品主檔轉入失敗：',
+      error
+    );
+
+    fileInput.value = '';
+
+    toast(
+      '加工部品主檔轉入失敗，請確認 Excel 格式',
+      'error'
+    );
+  }
+} // importPartMaster 結束
+
 function renderPartLineSettings() {
   const data = collectBOMParts();
   const partLines = loadPartLines();
   const partOperations = loadPartOperations();
+  const partInfo = loadPartInfo();
+  const suppliers = loadSupplierMaster();
+  const searchEl =
+    document.getElementById('part-master-search');
+
+  const lineFilterEl =
+    document.getElementById('part-master-line-filter');
+
+  const supplierFilterEl =
+    document.getElementById('part-master-supplier-filter');
+
+  const keyword =
+    (searchEl?.value || '').trim().toUpperCase();
+
+  const selectedLine =
+    lineFilterEl?.value || '';
+
+  const selectedSupplier =
+    supplierFilterEl?.value || '';
+
+  if (lineFilterEl) {
+    const currentValue = lineFilterEl.value;
+
+    lineFilterEl.innerHTML =
+      '<option value="">全部加工線別</option>' +
+      getProcessLines().map(line => `
+      <option value="${esc(line)}">
+        ${formatLineLabel(line)}
+      </option>
+    `).join('');
+
+    lineFilterEl.value = currentValue;
+  }
+
+  if (supplierFilterEl) {
+    const currentValue = supplierFilterEl.value;
+
+    supplierFilterEl.innerHTML =
+      '<option value="">全部素材廠商</option>' +
+      suppliers.map(supplier => `
+      <option value="${esc(supplier)}">
+        ${esc(supplier)}
+      </option>
+    `).join('');
+
+    supplierFilterEl.value = currentValue;
+  }
 
   const tbody = document.getElementById('part-line-tbody');
   const empty = document.getElementById('part-line-empty');
@@ -1940,52 +2266,97 @@ function renderPartLineSettings() {
   }
 
   empty.style.display = 'none';
-  summary.textContent = `共 ${data.length} 筆部品`;
 
-  tbody.innerHTML = data.map(item => {
+  const filteredData = data.filter(item => {
+    const line =
+      partLines[item.code] || '';
+
+    const supplier =
+      partInfo[item.code]?.supplier || '';
+
+    const owner =
+      partInfo[item.code]?.owner || '';
+
+    const matchKeyword =
+      !keyword ||
+      item.code.toUpperCase().includes(keyword) ||
+      owner.toUpperCase().includes(keyword);
+
+    const matchLine =
+      !selectedLine ||
+      line === selectedLine;
+
+    const matchSupplier =
+      !selectedSupplier ||
+      supplier === selectedSupplier;
+
+    return (
+      matchKeyword &&
+      matchLine &&
+      matchSupplier
+    );
+  });
+
+  summary.textContent =
+    `顯示 ${filteredData.length} / ${data.length} 筆部品`;
+
+  tbody.innerHTML = filteredData.map(item => {
     const operations = partOperations[item.code] || [];
+
+    const line = partLines[item.code] || '';
 
     return `
     <tr>
-      <td>
-        <span class="part-code">${esc(item.code)}</span>
+      <td class="col-check">
+        <input type="checkbox" class="part-select-checkbox" value="${esc(item.code)}" aria-label="勾選 ${esc(item.code)}">
       </td>
+      <td><span class="part-code">${esc(item.code)}</span></td>
 
       <td>
         <select
-        data-part-code="${esc(item.code)}"
-        onchange="updatePartLine(this.dataset.partCode, this.value)"
-        style="width:120px"
-        >
-        <option value="">未設定</option>
-
-        ${getProcessLines().map(line => `
-        <option
-          value="${line}"
-          ${partLines[item.code] === line ? 'selected' : ''}>
-          ${formatLineLabel(line)}
-        </option>
+          data-part-code="${esc(item.code)}"
+          onchange="updatePartLine(this.dataset.partCode, this.value)"
+          style="width:130px${line ? '' : ';border-color:var(--warn)'}"
+          aria-label="${esc(item.code)} 加工線別">
+          <option value="">未設定</option>
+          ${getProcessLines().map(optionLine => `
+            <option value="${esc(optionLine)}" ${line === optionLine ? 'selected' : ''}>${esc(formatLineLabel(optionLine))}</option>
           `).join('')}
         </select>
       </td>
 
-      <td>${operations.length}</td>
+      <td>
+        <select
+          data-part-code="${esc(item.code)}"
+          onchange="updatePartInfo(this.dataset.partCode, 'supplier', this.value)"
+          style="width:120px"
+          aria-label="${esc(item.code)} 素材廠商">
+          <option value="">未設定</option>
+          ${suppliers.map(supplier => `
+            <option value="${esc(supplier)}" ${partInfo[item.code]?.supplier === supplier ? 'selected' : ''}>${esc(supplier)}</option>
+          `).join('')}
+        </select>
+      </td>
 
-     <td>
-  <div style="display:flex; gap:0.4rem">
+      <td>
+        <input
+          type="text"
+          data-part-code="${esc(item.code)}"
+          value="${esc(partInfo[item.code]?.owner || '')}"
+          placeholder="擔當人員"
+          onchange="updatePartInfo(this.dataset.partCode, 'owner', this.value)"
+          style="width:120px"
+          aria-label="${esc(item.code)} 擔當人員">
+      </td>
 
-    <button class="btn btn-secondary btn-sm"
-      onclick="openPartMaster('${esc(item.code)}')">
-      編輯
-    </button>
+      <td class="num">${operations.length ? `<span class="pill pill-accent">${operations.length}</span>` : '<span class="muted">—</span>'}</td>
 
-    <button class="btn btn-danger btn-sm"
-      onclick="disablePart('${esc(item.type)}', '${esc(item.code)}')">
-      停用
-    </button>
-
-  </div>
-</td>
+      <td class="col-actions">
+        <div class="row-actions">
+          <button class="btn btn-ghost btn-sm" onclick="openPartMaster('${jsArg(item.code)}')">${icon('pencil')}OP／NT</button>
+          <button class="btn btn-danger-ghost btn-icon btn-sm" title="停用" aria-label="停用 ${esc(item.code)}" onclick="disablePart('${jsArg(item.type)}', '${jsArg(item.code)}')">${icon('ban')}</button>
+        </div>
+      </td>
     </tr>
   `;
   }).join('');
@@ -2035,11 +2406,9 @@ function renderPartOperationRows() {
           data-field="nt">
       </td>
 
-      <td>
-        <button class="btn btn-danger btn-sm"
-          onclick="this.closest('tr').remove()">
-          刪除
-        </button>
+      <td class="col-actions">
+        <button class="btn btn-danger-ghost btn-icon btn-sm" title="刪除這個 OP" aria-label="刪除這個 OP"
+          onclick="this.closest('tr').remove()">${icon('trash')}</button>
       </td>
     </tr>
   `).join('');
@@ -2069,14 +2438,13 @@ function addPartOperationRow() {
           data-field="nt">
       </td>
 
-      <td>
-        <button class="btn btn-danger btn-sm"
-          onclick="this.closest('tr').remove()">
-          刪除
-        </button>
+      <td class="col-actions">
+        <button class="btn btn-danger-ghost btn-icon btn-sm" title="刪除這個 OP" aria-label="刪除這個 OP"
+          onclick="this.closest('tr').remove()">${icon('trash')}</button>
       </td>
     </tr>
   `);
+  tbody.lastElementChild.querySelector('[data-field="machine"]').focus();
 } // addPartOperationRow 結束
 
 function savePartMaster() {
@@ -2109,20 +2477,63 @@ function savePartMaster() {
   toast('已儲存加工部品資料', 'success');
 } // savePartMaster 結束
 
-function disablePart(type, code) {
+async function disableSelectedParts() {
+  const checked = [
+    ...document.querySelectorAll(
+      '.part-select-checkbox:checked'
+    )
+  ];
+
+  if (checked.length === 0) {
+    toast('請先勾選要停用的部品', 'error');
+    return;
+  }
+
+  const codes = checked.map(item => item.value);
+
   if (
-    !confirm(
-      `確定要停用部品「${code}」嗎？\n\n停用後將不參與每日部品與加工數計算。`
+    !await uiConfirm(
+      `停用後不參與每日部品、加工數與加工線負荷計算，之後可在「停用部品管理」恢復。`,
+      { title: `停用 ${codes.length} 個部品`, danger: true, okText: '停用' }
     )
   ) {
     return;
   }
 
   const invalidParts = loadInvalidParts();
-  const key = `${type}__${code}`;
 
-  if (!invalidParts.includes(key)) {
-    invalidParts.push(key);
+  codes.forEach(code => {
+    if (!invalidParts.includes(code)) {
+      invalidParts.push(code);
+    }
+  });
+
+  saveInvalidParts(invalidParts);
+
+  renderPartLineSettings();
+  renderDailyParts();
+  renderResult();
+
+  toast(
+    `已停用 ${codes.length} 個部品`,
+    'success'
+  );
+} // disableSelectedParts 結束
+
+async function disablePart(type, code) {
+  if (
+    !await uiConfirm(
+      `停用後不參與每日部品、加工數與加工線負荷計算，之後可在「停用部品管理」恢復。`,
+      { title: `停用部品 ${code}`, danger: true, okText: '停用' }
+    )
+  ) {
+    return;
+  }
+
+  const invalidParts = loadInvalidParts();
+
+  if (!invalidParts.includes(code)) {
+    invalidParts.push(code);
   }
 
   saveInvalidParts(invalidParts);
@@ -2134,7 +2545,7 @@ function disablePart(type, code) {
   toast(`已停用部品：${code}`, 'success');
 } // disablePart 結束
 
-function restoreInvalidPart() {
+async function restoreInvalidPart() {
   const invalidParts = loadInvalidParts();
 
   if (invalidParts.length === 0) {
@@ -2142,20 +2553,18 @@ function restoreInvalidPart() {
     return;
   }
 
-  const list = invalidParts.map((key, index) => {
-    const [type, code] = key.split('__');
-
-    return `${index + 1}. ${type}｜${code}`;
-  });
-
-  const input = prompt(
-    '請輸入要恢復的編號：\n\n' +
-    list.join('\n')
+  const input = await uiPrompt(
+    `目前停用 ${invalidParts.length} 個部品，選擇要恢復計算的部品`,
+    {
+      title: '停用部品管理',
+      options: invalidParts,
+      okText: '恢復'
+    }
   );
 
   if (!input) return;
 
-  const index = Number(input) - 1;
+  const index = invalidParts.indexOf(input);
 
   if (
     !Number.isInteger(index) ||
@@ -2166,9 +2575,7 @@ function restoreInvalidPart() {
     return;
   }
 
-  const restoredKey = invalidParts[index];
-  const [, code] = restoredKey.split('__');
-
+  const code = invalidParts[index];
   invalidParts.splice(index, 1);
 
   saveInvalidParts(invalidParts);
@@ -2179,6 +2586,25 @@ function restoreInvalidPart() {
 
   toast(`已恢復部品：${code}`, 'success');
 } // restoreInvalidPart 結束
+
+function updatePartInfo(partCode, field, value) {
+  const partInfo = loadPartInfo();
+
+  if (!partInfo[partCode]) {
+    partInfo[partCode] = {
+      supplier: '',
+      owner: ''
+    };
+  }
+
+  partInfo[partCode][field] = value.trim();
+
+  savePartInfo(partInfo);
+
+  renderDailyParts();
+
+  toast(`已儲存 ${partCode} 的資料`, 'success');
+} // updatePartInfo 結束
 
 function updatePartLine(partCode, lineName) {
   const partLines = loadPartLines();
@@ -2258,17 +2684,16 @@ function renderDailyParts() {
 
   empty.style.display = 'none';
   summary.textContent = selectedLine
-    ? `${selectedLine} LINE｜${filteredData.length} 種部品／${dates.length} 個生產日期`
+    ? `${formatLineLabel(selectedLine)}｜${filteredData.length} 種部品／${dates.length} 個生產日期`
     : `${data.length} 種部品／${dates.length} 個生產日期`;
 
   thead.innerHTML = `
     <tr>
       <th>加工線別</th>
-      <th>部品類型</th>
       <th>部品代號</th>
-      <th>總數</th>
+      <th class="num">總數</th>
       ${dates.map(dateKey =>
-    `<th>${formatDailyDate(dateKey)}</th>`
+    `<th class="num">${formatDailyDate(dateKey)}</th>`
   ).join('')}
     </tr>
   `;
@@ -2278,7 +2703,7 @@ function renderDailyParts() {
     .map(line => {
       const items = groupedData[line];
       const lineName = line === 'UNASSIGNED'
-        ? '⚠️ 未設定加工線'
+        ? '未設定加工線'
         : formatLineLabel(line);
       const isCollapsed = collapsedLineGroups.has(line);
 
@@ -2288,15 +2713,12 @@ function renderDailyParts() {
       );
 
       return `
-       <tr class="line-group-row"
-       onclick="toggleLineGroup('${line}')"
-       style="cursor:pointer">
-          <td colspan="${4 + dates.length}"
-              style="text-align:left;font-weight:700">
-            ${isCollapsed ? '▶' : '▼'}
-            ${lineName}
-            ｜${items.length} 種部品
-            ｜總數 ${groupTotal}
+        <tr class="line-group-row" onclick="toggleLineGroup('${jsArg(line)}')">
+          <td colspan="${3 + dates.length}">
+            ${icon('chevron', `group-caret ${isCollapsed ? '' : 'open'}`)}
+            <span style="${line === 'UNASSIGNED' ? 'color:var(--warn-text)' : ''}">${esc(lineName)}</span>
+            <span class="pill" style="margin-left:8px">${items.length} 種部品</span>
+            <span class="pill pill-accent">合計 ${groupTotal.toLocaleString()}</span>
           </td>
         </tr>
 
@@ -2306,41 +2728,365 @@ function renderDailyParts() {
               <select
                 data-part-code="${esc(item.code)}"
                 onchange="updatePartLine(this.dataset.partCode, this.value)"
-                style="width:100px"
-              >
+                style="width:110px"
+                aria-label="${esc(item.code)} 加工線別">
                 <option value="">未設定</option>
-
                 ${getProcessLines().map(optionLine => `
-                  <option
-                    value="${optionLine}"
-                    ${partLines[item.code] === optionLine ? 'selected' : ''}>
-                      ${formatLineLabel(optionLine)}
-                  </option>
+                  <option value="${esc(optionLine)}" ${partLines[item.code] === optionLine ? 'selected' : ''}>${esc(formatLineLabel(optionLine))}</option>
                 `).join('')}
               </select>
             </td>
-
-          <td>
-            <span class="part-type-tag ${PART_TAG_CLASS[item.type]}">
-              ${esc(item.type)}
-            </span>
-          </td>
-
-          <td>
-            <span class="part-code">${esc(item.code)}</span>
-          </td>
-
-          <td class="qty-cell">${item.total}</td>
-
-          ${dates.map(dateKey =>
-        `<td>${item.dates[dateKey] || '—'}</td>`
-      ).join('')}
-        </tr>
-      `).join('')}
-    `;
+            <td><span class="part-code">${esc(item.code)}</span></td>
+            <td class="num qty-cell">${item.total.toLocaleString()}</td>
+            ${dates.map(dateKey => {
+              const qty = item.dates[dateKey];
+              return `<td class="num ${qty ? 'mono' : 'muted'}">${qty ? qty.toLocaleString() : '—'}</td>`;
+            }).join('')}
+          </tr>
+        `).join('')}
+      `;
     })
     .join('');
 } // renderDailyParts 結束
+
+// ===== LINE LOAD（加工線負荷，件數） =====
+const UNASSIGNED_LINE = '__UNASSIGNED__';
+const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+
+function addNestedQty(target, key, dateKey, qty) {
+  if (!target[key]) target[key] = {};
+  target[key][dateKey] = (target[key][dateKey] || 0) + qty;
+} // addNestedQty 結束
+
+function sumByMonth(dateMap, month) {
+  return Object.entries(dateMap || {})
+    .filter(([dateKey]) => dateKey.startsWith(month))
+    .reduce((sum, [, qty]) => sum + qty, 0);
+} // sumByMonth 結束
+
+function formatLoadLineLabel(line) {
+  return line === UNASSIGNED_LINE
+    ? '未設定線別'
+    : formatLineLabel(line);
+} // formatLoadLineLabel 結束
+
+// 組車計畫 × BOM → 各加工線每日件數；同時記下展不開的機種與沒線別的部品
+function calculateLineLoad() {
+  const dailyPlan = loadDailyPlan();
+  const bomLookup = buildBOMLookup();
+  const partLines = loadPartLines();
+  const invalidSet = new Set(loadInvalidParts());
+
+  const load = {};
+  const unassignedParts = {};
+  const noBOMModels = {};
+  const emptyBOMModels = {};
+  const units = {};
+
+  Object.entries(dailyPlan).forEach(([dateKey, models]) => {
+    Object.entries(models).forEach(([model, qty]) => {
+      units[dateKey] = (units[dateKey] || 0) + qty;
+
+      const row = bomLookup[normalizeModelCode(model)];
+
+      if (!row) {
+        addNestedQty(noBOMModels, model, dateKey, qty);
+        return;
+      }
+
+      const codes = PART_TYPES
+        .map(type => String(row[type] || '').trim())
+        .filter(code => code && !invalidSet.has(code));
+
+      if (codes.length === 0) {
+        addNestedQty(emptyBOMModels, model, dateKey, qty);
+        return;
+      }
+
+      codes.forEach(code => {
+        const line = partLines[code] || UNASSIGNED_LINE;
+
+        addNestedQty(load, line, dateKey, qty);
+
+        if (line === UNASSIGNED_LINE) {
+          addNestedQty(unassignedParts, code, dateKey, qty);
+        }
+      });
+    });
+  });
+
+  const masterLines = getProcessLines();
+  const otherLines = Object.keys(load)
+    .filter(line =>
+      line !== UNASSIGNED_LINE &&
+      !masterLines.includes(line)
+    )
+    .sort((a, b) => a.localeCompare(b, 'zh-TW', { numeric: true }));
+
+  const lines = [
+    ...masterLines.filter(line => load[line]),
+    ...otherLines,
+    ...(load[UNASSIGNED_LINE] ? [UNASSIGNED_LINE] : [])
+  ];
+
+  const dates = Object.keys(dailyPlan).sort();
+  const months = [...new Set(dates.map(dateKey => dateKey.slice(0, 7)))];
+
+  return {
+    load,
+    lines,
+    dates,
+    months,
+    units,
+    unassignedParts,
+    noBOMModels,
+    emptyBOMModels
+  };
+} // calculateLineLoad 結束
+
+function renderLineLoad() {
+  const monthEl = document.getElementById('line-load-month');
+  const emptyEl = document.getElementById('line-load-empty');
+  const contentEl = document.getElementById('line-load-content');
+  const summaryEl = document.getElementById('line-load-summary');
+
+  if (!monthEl) return;
+
+  const data = calculateLineLoad();
+
+  if (data.months.length === 0) {
+    monthEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    contentEl.style.display = 'none';
+    summaryEl.textContent = '尚未匯入組車計畫';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+  contentEl.style.display = 'block';
+
+  // 月份選單：保留目前選擇，沒有時預設資料最多的月份
+  const previous = monthEl.value;
+  const busiestMonth = data.months
+    .map(month => [month, sumByMonth(data.units, month)])
+    .sort((a, b) => b[1] - a[1])[0][0];
+
+  monthEl.innerHTML = data.months.map(month => {
+    const [year, mon] = month.split('-');
+    return `<option value="${month}">${year} 年 ${Number(mon)} 月</option>`;
+  }).join('');
+
+  monthEl.value = data.months.includes(previous) ? previous : busiestMonth;
+
+  const month = monthEl.value;
+  const monthDates = data.dates.filter(dateKey => dateKey.startsWith(month));
+
+  // 統計卡
+  const monthUnits = sumByMonth(data.units, month);
+  const monthPieces = data.lines.reduce(
+    (sum, line) => sum + sumByMonth(data.load[line], month),
+    0
+  );
+  const monthUnassigned = sumByMonth(data.load[UNASSIGNED_LINE], month);
+  const uncountedUnits =
+    Object.values(data.noBOMModels).reduce((sum, d) => sum + sumByMonth(d, month), 0) +
+    Object.values(data.emptyBOMModels).reduce((sum, d) => sum + sumByMonth(d, month), 0);
+
+  document.getElementById('line-load-units').textContent = monthUnits.toLocaleString();
+  document.getElementById('line-load-pieces').textContent = monthPieces.toLocaleString();
+  document.getElementById('line-load-unassigned').textContent = monthUnassigned.toLocaleString();
+  document.getElementById('line-load-uncounted').textContent = uncountedUnits.toLocaleString();
+
+  summaryEl.textContent =
+    `${data.lines.length} 條加工線／${monthDates.length} 個生產日｜資料涵蓋 ${data.months.length} 個月`;
+
+  // 日別表
+  const dailyTable = document.getElementById('line-load-daily');
+  const dateTotals = monthDates.map(dateKey =>
+    data.lines.reduce((sum, line) => sum + (data.load[line]?.[dateKey] || 0), 0)
+  );
+
+  dailyTable.innerHTML = `
+    <thead>
+      <tr>
+        <th class="sticky-col">加工線</th>
+        ${monthDates.map(dateKey => {
+          const weekday = new Date(`${dateKey}T00:00:00`).getDay();
+          return `<th class="${weekday === 0 || weekday === 6 ? 'weekend' : ''}">
+            ${formatDailyDate(dateKey)}<br><small>${WEEKDAY_LABELS[weekday]}</small>
+          </th>`;
+        }).join('')}
+        <th>月合計</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${data.lines.map(line => {
+        const values = monthDates.map(dateKey => data.load[line]?.[dateKey] || 0);
+        const peak = Math.max(...values);
+        const total = values.reduce((a, b) => a + b, 0);
+        // 熱度以該列（加工線）自己的最高日為基準，小線也看得出起伏
+        const rowMax = peak || 1;
+
+        return `
+          <tr class="${line === UNASSIGNED_LINE ? 'unassigned-row' : ''}">
+            <td class="sticky-col">${esc(formatLoadLineLabel(line))}</td>
+            ${values.map((qty, i) => {
+              if (qty === 0) return '<td class="load-zero">·</td>';
+              const h = Math.max(0.08, qty / rowMax);
+              return `<td class="heat ${h > 0.62 ? 'hot' : ''} ${qty === peak ? 'load-peak' : ''}" style="--h:${h.toFixed(3)}"
+                title="${esc(formatLoadLineLabel(line))}｜${formatDailyDate(monthDates[i])}｜${qty.toLocaleString()} 件">${qty.toLocaleString()}</td>`;
+            }).join('')}
+            <td class="total-col">${total.toLocaleString()}</td>
+          </tr>
+        `;
+      }).join('')}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td class="sticky-col">合計</td>
+        ${dateTotals.map(qty => `<td>${qty ? qty.toLocaleString() : '·'}</td>`).join('')}
+        <td class="total-col">${monthPieces.toLocaleString()}</td>
+      </tr>
+    </tfoot>
+  `;
+
+  // 當月件數排行
+  const ranking = data.lines
+    .map(line => [line, sumByMonth(data.load[line], month)])
+    .filter(([, qty]) => qty > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const rankMax = ranking[0]?.[1] || 1;
+
+  document.getElementById('line-load-ranking').innerHTML = ranking.length
+    ? ranking.map(([line, qty], i) => `
+        <div class="rank-row ${line === UNASSIGNED_LINE ? 'warn' : ''}">
+          <span class="rank-name">${esc(formatLoadLineLabel(line))}</span>
+          <span class="rank-value">${qty.toLocaleString()}</span>
+          <div class="rank-bar"><i style="--w:${(qty / rankMax).toFixed(3)};animation-delay:${i * 25}ms"></i></div>
+        </div>
+      `).join('')
+    : '<p class="card-sub">這個月沒有加工件數</p>';
+
+  // 月別表（全部月份）
+  const monthlyTable = document.getElementById('line-load-monthly');
+
+  monthlyTable.innerHTML = `
+    <thead>
+      <tr>
+        <th class="sticky-col">加工線</th>
+        ${data.months.map(m => `<th class="${m === month ? 'current-month' : ''}">${m.replace('-', '/')}</th>`).join('')}
+        <th>合計</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${data.lines.map(line => {
+        const values = data.months.map(m => sumByMonth(data.load[line], m));
+        return `
+          <tr class="${line === UNASSIGNED_LINE ? 'unassigned-row' : ''}">
+            <td class="sticky-col">${esc(formatLoadLineLabel(line))}</td>
+            ${values.map((qty, i) => `
+              <td class="${data.months[i] === month ? 'current-month' : ''} ${qty === 0 ? 'load-zero' : ''}">${qty === 0 ? '·' : qty.toLocaleString()}</td>
+            `).join('')}
+            <td class="total-col">${values.reduce((a, b) => a + b, 0).toLocaleString()}</td>
+          </tr>
+        `;
+      }).join('')}
+    </tbody>
+  `;
+
+  // 需要補資料
+  const listOf = (source, unitLabel) =>
+    Object.entries(source)
+      .map(([key, dates]) => [key, sumByMonth(dates, month)])
+      .filter(([, qty]) => qty > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([key, qty]) => `
+        <li><span class="part-code">${esc(key)}</span><span>${qty.toLocaleString()} ${unitLabel}</span></li>
+      `).join('');
+
+  const totalOf = source =>
+    Object.values(source).reduce((sum, dates) => sum + sumByMonth(dates, month), 0);
+
+  const sections = [
+    ['部品沒有設定加工線別', '到「加工部品主檔」替這些部品選加工線別', listOf(data.unassignedParts, '件'), totalOf(data.unassignedParts), '件', 'part-lines'],
+    ['機種在 BOM 找不到', '到「BOM 管理」建立這些機種', listOf(data.noBOMModels, '台'), totalOf(data.noBOMModels), '台', 'bom'],
+    ['BOM 沒有可加工部品', '部品欄全空白或都已停用；確定這些機種不需加工可略過', listOf(data.emptyBOMModels, '台'), totalOf(data.emptyBOMModels), '台', 'bom']
+  ];
+
+  document.getElementById('line-load-warnings').innerHTML =
+    sections.map(([title, hint, items, total, unit, tab]) => {
+      const count = (items.match(/<li>/g) || []).length;
+      return `
+        <details class="warn-block ${count ? '' : 'is-empty'}">
+          <summary ${count ? '' : 'onclick="event.preventDefault()"'}>
+            ${icon('chevron', 'group-caret')}
+            <span>${title}</span>
+            ${count
+              ? `<span class="pill pill-warn">${count} 筆・${total.toLocaleString()} ${unit}</span>`
+              : `<span class="pill pill-ok">${icon('check')}沒有</span>`}
+          </summary>
+          ${count ? `
+            <p class="warn-hint">${hint}　<button class="btn btn-ghost btn-sm" onclick="switchTab('${tab}')">前往${icon('chevron')}</button></p>
+            <ul class="warn-list">${items}</ul>` : ''}
+        </details>
+      `;
+    }).join('');
+} // renderLineLoad 結束
+
+function exportLineLoad() {
+  const data = calculateLineLoad();
+
+  if (data.months.length === 0) {
+    toast('尚無組車計畫可轉出', 'error');
+    return;
+  }
+
+  const workbook = XLSX.utils.book_new();
+
+  // 日別：每月一張表
+  data.months.forEach(month => {
+    const monthDates = data.dates.filter(dateKey => dateKey.startsWith(month));
+    const rows = [
+      ['加工線', ...monthDates.map(formatDailyDate), '月合計'],
+      ...data.lines.map(line => {
+        const values = monthDates.map(dateKey => data.load[line]?.[dateKey] || 0);
+        return [
+          line === UNASSIGNED_LINE ? '未設定線別' : formatLineLabel(line),
+          ...values,
+          values.reduce((a, b) => a + b, 0)
+        ];
+      })
+    ];
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.aoa_to_sheet(rows),
+      `日別_${month}`
+    );
+  });
+
+  // 月別
+  const monthlyRows = [
+    ['加工線', ...data.months, '合計'],
+    ...data.lines.map(line => {
+      const values = data.months.map(m => sumByMonth(data.load[line], m));
+      return [
+        line === UNASSIGNED_LINE ? '未設定線別' : formatLineLabel(line),
+        ...values,
+        values.reduce((a, b) => a + b, 0)
+      ];
+    })
+  ];
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet(monthlyRows),
+    '月別'
+  );
+
+  XLSX.writeFile(workbook, '加工線負荷.xlsx');
+  toast('加工線負荷已轉出', 'success');
+} // exportLineLoad 結束
 
 function renderMachineRequiredTime() {
   const data = calculateMachineRequiredTime();
@@ -2380,7 +3126,7 @@ function renderMachineRequiredTime() {
       <td>${formatDailyDate(item.date)}</td>
 
       <td>
-        ${item.line ? `${esc(item.line)} LINE` : '⚠️ 未設定'}
+        ${item.line ? esc(formatLineLabel(item.line)) : '⚠️ 未設定'}
       </td>
 
       <td>
@@ -2406,6 +3152,7 @@ function renderMachineRequiredTime() {
 function calculate() {
   const bom = loadBOM();
   const plan = loadPlan();
+  const invalidSet = new Set(loadInvalidParts());
   // result: partCode -> { type, code, qty, models[] }
   const result = {};
 
@@ -2415,7 +3162,7 @@ function calculate() {
     for (const pt of PART_TYPES) {
       const code = modelBOM[pt];
       if (!code) continue;
-      if (isInvalidPart(pt, code)) continue;
+      if (isInvalidPart(pt, code, invalidSet)) continue;
       if (!result[code]) result[code] = { type: pt, code, qty: 0, models: [] };
       result[code].qty += qty;
       result[code].models.push(`${model}×${qty}`);
@@ -2452,11 +3199,11 @@ function renderResult() {
 
   tbody.innerHTML = data.map((r, i) => `
     <tr>
-      <td style="color:var(--text-muted);font-size:0.8rem">${i + 1}</td>
-      <td><span class="part-type-tag ${PART_TAG_CLASS[r.type]}">${esc(r.type)}</span></td>
       <td><span class="part-code">${esc(r.code)}</span></td>
       <td class="qty-cell">${r.qty}</td>
-      <td style="font-size:0.78rem;color:var(--text-sub)">${r.models.join(', ')}</td>
+      <td style="font-size:0.78rem;color:var(--text-sub)">
+      ${r.models.join(', ')}
+      </td>
     </tr>
   `).join('');
 }
@@ -2467,9 +3214,9 @@ function exportCSV() {
 
   const plan = loadPlan();
   const dateStr = new Date().toLocaleDateString('zh-TW').replace(/\//g, '');
-  const header = '部品類型,部品代號,加工數量,來源機種\n';
+  const header = '部品代號,加工數量,來源機種\n';
   const rows = data.map(r =>
-    `${r.type},${r.code},${r.qty},"${r.models.join(' / ')}"`
+    `${r.code},${r.qty},"${r.models.join(' / ')}"`
   ).join('\n');
 
   const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8' });
@@ -2484,15 +3231,285 @@ function exportCSV() {
   toast('已匯出 CSV 檔案', 'success');
 }
 
+// ===== 介面元件 =====
+function icon(name, extraClass = '') {
+  return `<svg class="i ${extraClass}"><use href="#i-${name}"/></svg>`;
+} // icon 結束
+
 // ===== TOAST =====
 function toast(msg, type = 'success') {
   const container = document.getElementById('toast-container');
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  el.innerHTML = (type === 'success' ? '✅' : '❌') + ' ' + msg;
+  el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  el.innerHTML = icon(type === 'success' ? 'check' : 'alert') + `<span>${esc(msg)}</span>`;
   container.appendChild(el);
-  setTimeout(() => el.remove(), 3000);
-}
+
+  setTimeout(() => {
+    el.classList.add('leaving');
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+  }, 3200);
+} // toast 結束
+
+// ===== 對話框（取代瀏覽器原生 alert／confirm／prompt）=====
+// mode：alert | confirm | prompt；prompt 可帶 options 變成下拉選單
+function openDialog(mode, message, opts = {}) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('dialog-overlay');
+    const iconEl = document.getElementById('dialog-icon');
+    const titleEl = document.getElementById('dialog-title');
+    const messageEl = document.getElementById('dialog-message');
+    const fieldEl = document.getElementById('dialog-field');
+    const okBtn = document.getElementById('dialog-ok');
+    const cancelBtn = document.getElementById('dialog-cancel');
+    const previousFocus = document.activeElement;
+
+    const tone = opts.danger ? 'danger' : (opts.tone || (mode === 'alert' ? 'warn' : ''));
+
+    iconEl.className = `dialog-icon ${tone}`;
+    iconEl.innerHTML = icon(
+      opts.danger ? 'trash' : mode === 'prompt' ? 'pencil' : tone === 'warn' ? 'alert' : 'info'
+    );
+
+    titleEl.textContent =
+      opts.title || (mode === 'confirm' ? '請確認' : mode === 'prompt' ? '請輸入' : '提醒');
+    messageEl.textContent = message || '';
+
+    fieldEl.innerHTML = '';
+    let input = null;
+
+    if (mode === 'prompt') {
+      if (opts.options) {
+        input = document.createElement('select');
+        input.innerHTML = opts.options
+          .map(option => `<option value="${esc(option)}">${esc(option)}</option>`)
+          .join('');
+      } else {
+        input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = opts.placeholder || '';
+        input.value = opts.defaultValue || '';
+      }
+      fieldEl.appendChild(input);
+    }
+
+    okBtn.textContent = opts.okText || (mode === 'alert' ? '知道了' : '確定');
+    okBtn.classList.toggle('danger', Boolean(opts.danger));
+    cancelBtn.style.display = mode === 'alert' ? 'none' : '';
+
+    const close = result => {
+      overlay.classList.add('hidden');
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      overlay.onclick = null;
+      document.removeEventListener('keydown', onKey, true);
+      previousFocus?.focus?.();
+      resolve(result);
+    };
+
+    const accept = () => {
+      if (mode === 'prompt') close(input.value.trim() || null);
+      else close(true);
+    };
+
+    const dismiss = () => close(mode === 'prompt' ? null : mode === 'alert' ? true : false);
+
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismiss(); }
+      if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); accept(); }
+    }
+
+    okBtn.onclick = accept;
+    cancelBtn.onclick = dismiss;
+    overlay.onclick = e => { if (e.target === overlay) dismiss(); };
+    document.addEventListener('keydown', onKey, true);
+
+    overlay.classList.remove('hidden');
+    (input || (opts.danger ? cancelBtn : okBtn)).focus();
+  });
+} // openDialog 結束
+
+const uiAlert = (message, opts) => openDialog('alert', message, opts);
+const uiConfirm = (message, opts) => openDialog('confirm', message, opts);
+const uiPrompt = (message, opts) => openDialog('prompt', message, opts);
+
+// ===== 主題 =====
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+
+  try { localStorage.setItem('k1_theme', next); } catch (e) { /* 無法儲存時只影響這次 */ }
+} // toggleTheme 結束
+
+// ===== 側欄（手機）與下拉選單 =====
+function toggleSidebar(force) {
+  const sidebar = document.getElementById('sidebar');
+  const open = typeof force === 'boolean' ? force : !sidebar.classList.contains('open');
+  sidebar.classList.toggle('open', open);
+} // toggleSidebar 結束
+
+function toggleMenu(button) {
+  const menu = button.nextElementSibling;
+  const willOpen = !menu.classList.contains('open');
+
+  document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open'));
+  if (willOpen) menu.classList.add('open');
+} // toggleMenu 結束
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.menu-wrap')) {
+    document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open'));
+  } else if (e.target.closest('.menu button')) {
+    e.target.closest('.menu').classList.remove('open');
+  }
+});
+
+function switchTab(tab) {
+  document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.click();
+} // switchTab 結束
+
+function onPlanFileChosen(input) {
+  const label = document.getElementById('excel-file-name');
+  const file = input.files[0];
+
+  label.textContent = file ? file.name : '選擇 Excel 檔案';
+  input.closest('.dropzone').classList.toggle('has-file', Boolean(file));
+} // onPlanFileChosen 結束
+
+function toggleAllParts(checked) {
+  document.querySelectorAll('.part-select-checkbox').forEach(box => {
+    box.checked = checked;
+  });
+} // toggleAllParts 結束
+
+// ===== 指令面板（Ctrl＋K）=====
+let commandItems = [];
+let commandIndex = 0;
+
+function getCommands() {
+  const tabs = [...document.querySelectorAll('.tab-btn')].map(btn => ({
+    group: '前往',
+    label: btn.querySelector('span').textContent,
+    icon: btn.querySelector('use').getAttribute('href').slice(3),
+    run: () => btn.click()
+  }));
+
+  const pickFile = (tab, inputId) => () => {
+    switchTab(tab);
+    document.getElementById(inputId).click();
+  };
+
+  return [
+    ...tabs,
+    { group: '動作', label: '匯入組車計畫 Excel', icon: 'upload', hint: '生產計畫', run: pickFile('production', 'excel-file') },
+    { group: '動作', label: '轉出加工線負荷 Excel', icon: 'download', hint: '加工線負荷', run: () => exportLineLoad() },
+    { group: '動作', label: '新增機種 BOM', icon: 'plus', hint: 'BOM 管理', run: () => { switchTab('bom'); openAddModal(); } },
+    { group: '動作', label: 'BOM 主檔轉入', icon: 'upload', hint: 'BOM 管理', run: pickFile('bom', 'bom-excel-file') },
+    { group: '動作', label: '加工部品主檔轉入', icon: 'upload', hint: '加工部品主檔', run: pickFile('part-lines', 'part-master-excel-file') },
+    { group: '動作', label: '設備主檔轉入', icon: 'upload', hint: '設備主檔', run: pickFile('equipment', 'equipment-excel-file') },
+    { group: '動作', label: '新增設備', icon: 'plus', hint: '設備主檔', run: () => { switchTab('equipment'); addEquipment(); } },
+    { group: '動作', label: '停用部品管理', icon: 'restore', hint: '加工部品主檔', run: () => { switchTab('part-lines'); restoreInvalidPart(); } },
+    { group: '偏好', label: '切換深色／淺色', icon: 'moon', run: () => toggleTheme() }
+  ];
+} // getCommands 結束
+
+function openCommandPalette() {
+  const overlay = document.getElementById('cmdk-overlay');
+  const input = document.getElementById('cmdk-input');
+
+  overlay.classList.remove('hidden');
+  input.value = '';
+  renderCommandList();
+  input.focus();
+} // openCommandPalette 結束
+
+function closeCommandPalette() {
+  document.getElementById('cmdk-overlay').classList.add('hidden');
+} // closeCommandPalette 結束
+
+function renderCommandList() {
+  const keyword = document.getElementById('cmdk-input').value.trim().toLowerCase();
+  const list = document.getElementById('cmdk-list');
+
+  commandItems = getCommands().filter(item =>
+    !keyword ||
+    item.label.toLowerCase().includes(keyword) ||
+    (item.hint || '').toLowerCase().includes(keyword) ||
+    keyword.split('').every(ch => item.label.toLowerCase().includes(ch))
+  );
+
+  commandIndex = 0;
+
+  if (commandItems.length === 0) {
+    list.innerHTML = '<div class="cmdk-empty">找不到符合的功能</div>';
+    return;
+  }
+
+  let lastGroup = '';
+
+  list.innerHTML = commandItems.map((item, index) => {
+    const header = item.group !== lastGroup ? `<div class="cmdk-group">${item.group}</div>` : '';
+    lastGroup = item.group;
+
+    return `${header}
+      <button class="cmdk-item ${index === 0 ? 'active' : ''}" data-index="${index}" role="option">
+        ${icon(item.icon)}<span>${esc(item.label)}</span>${item.hint ? `<small>${esc(item.hint)}</small>` : ''}
+      </button>`;
+  }).join('');
+} // renderCommandList 結束
+
+function setCommandIndex(index) {
+  const items = document.querySelectorAll('.cmdk-item');
+  if (items.length === 0) return;
+
+  commandIndex = (index + items.length) % items.length;
+  items.forEach(item => item.classList.toggle('active', Number(item.dataset.index) === commandIndex));
+  items[commandIndex].scrollIntoView({ block: 'nearest' });
+} // setCommandIndex 結束
+
+function runCommand(index) {
+  const item = commandItems[index];
+  if (!item) return;
+
+  closeCommandPalette();
+  item.run();
+} // runCommand 結束
+
+document.getElementById('cmdk-input').addEventListener('input', renderCommandList);
+
+document.getElementById('cmdk-list').addEventListener('click', e => {
+  const item = e.target.closest('.cmdk-item');
+  if (item) runCommand(Number(item.dataset.index));
+});
+
+document.getElementById('cmdk-list').addEventListener('mousemove', e => {
+  const item = e.target.closest('.cmdk-item');
+  if (item && Number(item.dataset.index) !== commandIndex) setCommandIndex(Number(item.dataset.index));
+});
+
+document.addEventListener('keydown', e => {
+  const paletteOpen = !document.getElementById('cmdk-overlay').classList.contains('hidden');
+
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    paletteOpen ? closeCommandPalette() : openCommandPalette();
+    return;
+  }
+
+  if (paletteOpen) {
+    if (e.key === 'Escape') { e.preventDefault(); closeCommandPalette(); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setCommandIndex(commandIndex + 1); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setCommandIndex(commandIndex - 1); }
+    if (e.key === 'Enter') { e.preventDefault(); runCommand(commandIndex); }
+    return;
+  }
+
+  if (e.key === 'Escape') {
+    if (!document.getElementById('modal-overlay').classList.contains('hidden')) closeModal();
+    if (!document.getElementById('part-master-overlay').classList.contains('hidden')) closePartMaster();
+    toggleSidebar(false);
+  }
+});
 
 // ===== UTILS =====
 function esc(str) {
@@ -2500,7 +3517,13 @@ function esc(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// 放進 onclick="fn('…')" 的字串：先做 JS 跳脫，再做 HTML 跳脫
+function jsArg(str) {
+  return esc(String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
 }
 function buildDateColumns(headerRow) {
   const columns = {};
@@ -2508,7 +3531,10 @@ function buildDateColumns(headerRow) {
   let month = null;
   let previousDay = null;
 
-  for (let col = 7; col < headerRow.length; col++) {
+  // 日期從 G 欄（索引 6）開始；F 欄是台數
+  for (let col = 6; col < headerRow.length; col++) {
+    if (headerRow[col] === null || headerRow[col] === '') continue;
+
     const value = Number(headerRow[col]);
     if (!Number.isFinite(value)) continue;
 
@@ -2557,7 +3583,7 @@ async function importExcel() {
 
   if (
     oldPlan.length > 0 &&
-    !confirm('目前已有生產計畫，匯入後會清空並重新建立，是否繼續？')
+    !await uiConfirm('生產計畫會換成這份檔案的內容；每日計畫只取代檔案涵蓋的日期，其他月份保留。', { title: '匯入組車計畫', okText: '匯入' })
   ) {
     return;
   }
@@ -2582,16 +3608,11 @@ async function importExcel() {
       raw: true
     });
 
-    const normalizeModel = value =>
-      String(value)
-        .trim()
-        .replace(/^\*+|\*+$/g, '')
-        .trim()
-        .toUpperCase()
-        .replace(/\s*\([A-Z]{2,3}\)\s*$/, '');
+    const normalizeModel = normalizeModelCode;
 
     const dailyPlan = {};
     let dateColumns = {};
+    const fileDates = new Set();
     const excelModels = {};
 
     rows.forEach(row => {
@@ -2599,6 +3620,7 @@ async function importExcel() {
 
       if (isHeader) {
         dateColumns = buildDateColumns(row);
+        Object.values(dateColumns).forEach(dateKey => fileDates.add(dateKey));
         return;
       } // 日期表頭處理結束
       const no = Number(row[1]);       // B 欄：NO
@@ -2625,8 +3647,23 @@ async function importExcel() {
       excelModels[model] = (excelModels[model] || 0) + Math.trunc(qty);
     });
 
-    saveDailyPlan(dailyPlan);
+    if (fileDates.size === 0) {
+      toast('找不到日期表頭（B 欄為 NO 的那一列）', 'error');
+      return;
+    }
+
+    // 每日計畫依日期合併：這份檔案涵蓋的日期以新資料取代，其他月份保留
+    const mergedDailyPlan = loadDailyPlan();
+
+    fileDates.forEach(dateKey => {
+      delete mergedDailyPlan[dateKey];
+    });
+
+    Object.assign(mergedDailyPlan, dailyPlan);
+
+    saveDailyPlan(mergedDailyPlan);
     renderDailyParts();
+    renderLineLoad();
 
     const bom = loadBOM();
 
@@ -2659,12 +3696,20 @@ async function importExcel() {
     savePending(pendingModels);
     renderPending();
     if (newPlan.length === 0) {
+      // 每日計畫已換成新檔案，生產計畫也一併換掉，兩邊才一致
+      savePlan([]);
+      renderPlan();
+      renderResult();
+      fileInput.value = '';
+
       toast('沒有找到已建立 BOM 的機種', 'error');
 
       if (missingModels.length > 0) {
-        alert(
-          '以下機種尚未建立 BOM：\n\n' +
-          missingModels.slice(0, 30).join('\n')
+        await uiAlert(
+          `${missingModels.length} 個機種尚未建立 BOM，已列在「生產計畫」的待建立清單。\n\n` +
+          missingModels.slice(0, 12).join('、') +
+          (missingModels.length > 12 ? ` 等` : ''),
+          { title: '找不到已建立 BOM 的機種', tone: 'warn' }
         );
       }
 
@@ -2689,10 +3734,11 @@ async function importExcel() {
           ? `\n\n另有 ${missingModels.length - 30} 個未顯示`
           : '';
 
-      alert(
-        `已略過 ${missingModels.length} 個尚未建立 BOM 的機種：\n\n` +
-        missingModels.slice(0, 30).join('\n') +
-        extraText
+      await uiAlert(
+        `${missingModels.length} 個機種尚未建立 BOM，沒有算進加工數，已列在「待建立 BOM」：\n\n` +
+        missingModels.slice(0, 12).join('、') +
+        (missingModels.length > 12 ? ` 等${extraText ? '' : ''}` : ''),
+        { title: `匯入完成：${newPlan.length} 個機種、${totalQty.toLocaleString()} 台`, tone: 'warn' }
       );
     }
 
@@ -2709,3 +3755,10 @@ renderPlan();
 renderPending();
 refreshPlanSelect();
 document.getElementById('bom-search-input')?.addEventListener('input', renderBOM);
+
+// 開啟上次停留的頁面
+(function restoreLastTab() {
+  let last = null;
+  try { last = localStorage.getItem('k1_last_tab'); } catch (e) { /* 忽略 */ }
+  if (last && last !== 'bom') switchTab(last);
+})();
