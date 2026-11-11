@@ -4,491 +4,681 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>K1 部品加工數計算系統</title>
-  <meta name="description" content="K1 組車 BOM 管理與部品加工數自動計算工具">
-  <link rel="stylesheet" href="style.css">
+  <title>K1 組車加工負荷</title>
+  <meta name="description" content="K1 組車 BOM 管理、部品加工數與加工線負荷分析">
+  <meta name="color-scheme" content="light dark">
+  <script>
+    // 先決定主題，避免載入時閃白
+    (function () {
+      var saved = null;
+      try { saved = localStorage.getItem('k1_theme'); } catch (e) { }
+      var dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap"
     rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-  <!-- ===== HEADER ===== -->
-  <header>
-    <div class="header-inner">
-      <div class="logo">
-        <div class="logo-icon">⚙️</div>
-        <div>
-          <h1>組車加工數計算系統</h1>
-          <p>BOM Management &amp; Production Calculator</p>
+  <!-- ===== 圖示 ===== -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <defs>
+      <symbol id="i-logo" viewBox="0 0 24 24"><path d="M12 2 3 7v10l9 5 9-5V7Z"/><path d="m3 7 9 5 9-5"/><path d="M12 12v10"/></symbol>
+      <symbol id="i-bom" viewBox="0 0 24 24"><path d="m12 2 10 5-10 5L2 7Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></symbol>
+      <symbol id="i-plan" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/></symbol>
+      <symbol id="i-daily" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></symbol>
+      <symbol id="i-load" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16v-4M12 16V8M17 16V5"/></symbol>
+      <symbol id="i-part" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></symbol>
+      <symbol id="i-factory" viewBox="0 0 24 24"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M17 18h1M12 18h1M7 18h1"/></symbol>
+      <symbol id="i-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></symbol>
+      <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+      <symbol id="i-sigma" viewBox="0 0 24 24"><path d="M18 7V4H6l6 8-6 8h12v-3"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5M12 3v12"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
+      <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+      <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
+      <symbol id="i-restore" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+      <symbol id="i-sheet" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4M8 13h2M14 13h2M8 17h2M14 17h2"/></symbol>
+      <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+      <symbol id="i-command" viewBox="0 0 24 24"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></symbol>
+      <symbol id="i-enter" viewBox="0 0 24 24"><path d="M9 10 4 15l5 5"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app">
+
+    <!-- ===== 側欄 ===== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark"><svg class="i"><use href="#i-logo"/></svg></div>
+        <div class="brand-text">
+          <strong>K1 組車負荷</strong>
+          <span>M3 加工排產</span>
         </div>
       </div>
-      <span class="header-badge">M3使用</span>
+
+      <nav class="side-nav" aria-label="主要功能">
+        <div class="nav-group">
+          <div class="nav-label">計畫</div>
+          <button class="tab-btn" data-tab="production"><svg class="i"><use href="#i-plan"/></svg><span>生產計畫</span></button>
+          <button class="tab-btn" data-tab="daily"><svg class="i"><use href="#i-daily"/></svg><span>每日部品計畫</span></button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">分析</div>
+          <button class="tab-btn" data-tab="line-load"><svg class="i"><use href="#i-load"/></svg><span>加工線負荷</span><em class="nav-badge">新</em></button>
+          <button class="tab-btn" data-tab="machine-time"><svg class="i"><use href="#i-timer"/></svg><span>設備需求時間</span></button>
+          <button class="tab-btn" data-tab="capacity"><svg class="i"><use href="#i-gauge"/></svg><span>產能負荷分析</span></button>
+          <button class="tab-btn" data-tab="result"><svg class="i"><use href="#i-sigma"/></svg><span>加工數彙總</span></button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">主檔</div>
+          <button class="tab-btn active" data-tab="bom"><svg class="i"><use href="#i-bom"/></svg><span>BOM 管理</span></button>
+          <button class="tab-btn" data-tab="part-lines"><svg class="i"><use href="#i-part"/></svg><span>加工部品主檔</span></button>
+          <button class="tab-btn" data-tab="equipment"><svg class="i"><use href="#i-factory"/></svg><span>設備主檔</span></button>
+        </div>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="storage-note">
+          <span class="dot"></span>
+          資料存在這台電腦的瀏覽器
+        </div>
+      </div>
+    </aside>
+    <div class="sidebar-scrim" onclick="toggleSidebar(false)"></div>
+
+    <!-- ===== 主區 ===== -->
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" onclick="toggleSidebar()" aria-label="開啟選單">
+          <svg class="i"><use href="#i-menu"/></svg>
+        </button>
+
+        <div class="crumb">
+          <span>工作區</span>
+          <svg class="i"><use href="#i-chevron"/></svg>
+          <strong id="crumb-current">BOM 管理</strong>
+        </div>
+
+        <button class="cmdk-trigger" onclick="openCommandPalette()">
+          <svg class="i"><use href="#i-search"/></svg>
+          <span>搜尋功能或動作…</span>
+          <kbd>Ctrl K</kbd>
+        </button>
+
+        <button class="icon-btn" onclick="toggleTheme()" aria-label="切換深淺色">
+          <svg class="i theme-icon-dark"><use href="#i-moon"/></svg>
+          <svg class="i theme-icon-light"><use href="#i-sun"/></svg>
+        </button>
+      </header>
+
+      <main class="main-content">
+
+        <!-- ── BOM ── -->
+        <section id="tab-bom" class="tab-pane active">
+          <div class="page-header">
+            <div>
+              <h2>BOM 管理</h2>
+              <p id="bom-count">載入中…</p>
+            </div>
+            <div class="toolbar">
+              <input type="file" id="bom-excel-file" accept=".xlsx,.xls" hidden onchange="importBOMMaster()">
+              <button class="btn btn-ghost" onclick="document.getElementById('bom-excel-file').click()">
+                <svg class="i"><use href="#i-upload"/></svg>轉入
+              </button>
+              <button class="btn btn-ghost" onclick="exportBOMMaster()">
+                <svg class="i"><use href="#i-download"/></svg>轉出
+              </button>
+              <button class="btn btn-primary" onclick="openAddModal()">
+                <svg class="i"><use href="#i-plus"/></svg>新增機種
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-toolbar">
+              <label class="search-field">
+                <svg class="i"><use href="#i-search"/></svg>
+                <input type="text" id="bom-search-input" placeholder="搜尋機種代號或部品件號" aria-label="搜尋 BOM">
+              </label>
+            </div>
+            <div class="table-wrap">
+              <table id="bom-table" class="data-table">
+                <thead id="bom-thead"></thead>
+                <tbody id="bom-tbody"></tbody>
+              </table>
+            </div>
+            <div id="bom-empty" class="empty-state" style="display:none">
+              <div class="empty-icon"><svg class="i"><use href="#i-inbox"/></svg></div>
+              <p>尚無 BOM 資料</p>
+              <span>按右上角「新增機種」或「轉入」建立資料</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── 生產計畫 ── -->
+        <section id="tab-production" class="tab-pane">
+          <div class="page-header">
+            <div>
+              <h2>生產計畫</h2>
+              <p id="plan-count">尚無資料</p>
+            </div>
+            <div class="toolbar">
+              <button class="btn btn-danger-ghost" onclick="clearPlan()">
+                <svg class="i"><use href="#i-trash"/></svg>清空計畫
+              </button>
+            </div>
+          </div>
+
+          <div class="prod-layout">
+            <div class="stack">
+              <div class="card card-pad">
+                <h3 class="card-title">匯入組車計畫</h3>
+                <p class="card-sub">讀取每月組車計畫 Excel（例如「組車計畫9-0.xlsx」），自動建立每日計畫與生產計畫。</p>
+                <label class="dropzone" for="excel-file">
+                  <svg class="i"><use href="#i-sheet"/></svg>
+                  <strong id="excel-file-name">選擇 Excel 檔案</strong>
+                  <span>支援 .xlsx、.xls</span>
+                  <input type="file" id="excel-file" accept=".xlsx,.xls" onchange="onPlanFileChosen(this)">
+                </label>
+                <button class="btn btn-primary btn-block" onclick="importExcel()">
+                  <svg class="i"><use href="#i-upload"/></svg>讀取並匯入
+                </button>
+              </div>
+
+              <div class="card card-pad">
+                <h3 class="card-title">手動加入</h3>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="plan-model-select">機種代號</label>
+                    <select id="plan-model-select">
+                      <option value="">請先至 BOM 管理建立機種</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="plan-qty">生產數量（台）</label>
+                    <input type="number" id="plan-qty" min="1" placeholder="台數">
+                  </div>
+                </div>
+                <button class="btn btn-secondary btn-block" onclick="addPlanItem()">
+                  <svg class="i"><use href="#i-plus"/></svg>加入計畫
+                </button>
+              </div>
+            </div>
+
+            <div class="stack">
+              <div class="card card-pad">
+                <h3 class="card-title">目前生產計畫</h3>
+                <div id="plan-list" class="plan-list"></div>
+                <div id="plan-empty" class="empty-state compact">
+                  <div class="empty-icon"><svg class="i"><use href="#i-plan"/></svg></div>
+                  <p>尚未加入任何生產項目</p>
+                </div>
+              </div>
+
+              <div class="card card-pad">
+                <h3 class="card-title">待建立 BOM <span class="pill pill-warn" id="pending-count">0 筆待處理</span></h3>
+                <div id="pending-list" class="plan-list"></div>
+                <div id="pending-empty" class="empty-state compact">
+                  <div class="empty-icon ok"><svg class="i"><use href="#i-check"/></svg></div>
+                  <p>目前沒有待建立的 BOM</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── 每日部品計畫 ── -->
+        <section id="tab-daily" class="tab-pane">
+          <div class="page-header">
+            <div>
+              <h2>每日部品計畫</h2>
+              <p id="daily-plan-summary">尚未匯入每日生產資料</p>
+            </div>
+            <div class="toolbar">
+              <select id="daily-line-filter" onchange="renderDailyParts()" aria-label="篩選加工線">
+                <option value="">全部加工線</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="table-wrap">
+              <table id="daily-parts-table" class="data-table">
+                <thead id="daily-parts-thead"></thead>
+                <tbody id="daily-parts-tbody"></tbody>
+              </table>
+            </div>
+            <div id="daily-parts-empty" class="empty-state">
+              <div class="empty-icon"><svg class="i"><use href="#i-daily"/></svg></div>
+              <p>尚無每日部品計畫</p>
+              <span>請先至「生產計畫」匯入組車計畫</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── 加工線負荷 ── -->
+        <section id="tab-line-load" class="tab-pane">
+          <div class="page-header">
+            <div>
+              <h2>加工線負荷</h2>
+              <p id="line-load-summary">依組車計畫展開 BOM，統計各加工線每日、每月加工件數</p>
+            </div>
+            <div class="toolbar">
+              <select id="line-load-month" onchange="renderLineLoad()" aria-label="選擇月份"></select>
+              <button class="btn btn-ghost" onclick="exportLineLoad()">
+                <svg class="i"><use href="#i-download"/></svg>轉出 Excel
+              </button>
+            </div>
+          </div>
+
+          <div id="line-load-empty" class="empty-state card">
+            <div class="empty-icon"><svg class="i"><use href="#i-load"/></svg></div>
+            <p>尚無組車計畫資料</p>
+            <span>請先至「生產計畫」匯入組車計畫 Excel</span>
+          </div>
+
+          <div id="line-load-content" style="display:none">
+            <div class="kpi-grid">
+              <div class="kpi">
+                <span class="kpi-label">當月組車台數</span>
+                <strong class="kpi-value" id="line-load-units">0</strong>
+                <span class="kpi-foot">組車計畫每日數量加總</span>
+              </div>
+              <div class="kpi">
+                <span class="kpi-label">當月加工件數</span>
+                <strong class="kpi-value" id="line-load-pieces">0</strong>
+                <span class="kpi-foot">依 BOM 展開後的部品件數</span>
+              </div>
+              <div class="kpi kpi-warn">
+                <span class="kpi-label">未設定線別件數</span>
+                <strong class="kpi-value" id="line-load-unassigned">0</strong>
+                <span class="kpi-foot">部品主檔缺加工線別</span>
+              </div>
+              <div class="kpi kpi-muted">
+                <span class="kpi-label">未展開組車台數</span>
+                <strong class="kpi-value" id="line-load-uncounted">0</strong>
+                <span class="kpi-foot">沒有 BOM 或 BOM 無部品</span>
+              </div>
+            </div>
+
+            <div class="load-grid">
+              <div class="card">
+                <div class="card-head">
+                  <div>
+                    <h3 class="card-title">日別負荷</h3>
+                    <p class="card-sub">顏色越深代表當天件數越多；每列最高的一天加框標示</p>
+                  </div>
+                  <div class="heat-legend" aria-hidden="true">
+                    <span>少</span><i style="--h:.08"></i><i style="--h:.3"></i><i style="--h:.55"></i><i style="--h:.8"></i><i style="--h:1"></i><span>多</span>
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table class="data-table line-load-table" id="line-load-daily"></table>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-head">
+                  <div>
+                    <h3 class="card-title">當月件數排行</h3>
+                    <p class="card-sub">各加工線當月合計</p>
+                  </div>
+                </div>
+                <div id="line-load-ranking" class="ranking"></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <h3 class="card-title">月別負荷</h3>
+                  <p class="card-sub">已匯入的全部月份；目前選擇的月份以底色標示</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table line-load-table" id="line-load-monthly"></table>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <h3 class="card-title">需要補資料</h3>
+                  <p class="card-sub">以下項目讓部分組車台數沒辦法算進加工線（當月）</p>
+                </div>
+              </div>
+              <div id="line-load-warnings"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── 加工部品主檔 ── -->
+        <section id="tab-part-lines" class="tab-pane">
+          <div class="page-header">
+            <div>
+              <h2>加工部品主檔</h2>
+              <p id="part-line-summary">管理部品加工線別、素材廠商與擔當人員</p>
+            </div>
+            <div class="toolbar">
+              <input type="file" id="part-master-excel-file" accept=".xlsx,.xls" hidden onchange="importPartMaster()">
+              <button class="btn btn-ghost" onclick="document.getElementById('part-master-excel-file').click()">
+                <svg class="i"><use href="#i-upload"/></svg>轉入
+              </button>
+              <button class="btn btn-ghost" onclick="exportPartMaster()">
+                <svg class="i"><use href="#i-download"/></svg>轉出
+              </button>
+              <div class="menu-wrap">
+                <button class="btn btn-secondary" onclick="toggleMenu(this)">
+                  主檔設定<svg class="i chevron-down"><use href="#i-chevron"/></svg>
+                </button>
+                <div class="menu">
+                  <button onclick="addLineMaster()"><svg class="i"><use href="#i-plus"/></svg>新增線別／廠商</button>
+                  <button onclick="deleteLineMaster()"><svg class="i"><use href="#i-minus"/></svg>刪除線別／廠商</button>
+                  <hr>
+                  <button onclick="addSupplierMaster()"><svg class="i"><use href="#i-plus"/></svg>新增素材廠商</button>
+                  <button onclick="deleteSupplierMaster()"><svg class="i"><use href="#i-minus"/></svg>刪除素材廠商</button>
+                  <hr>
+                  <button onclick="restoreInvalidPart()"><svg class="i"><use href="#i-restore"/></svg>停用部品管理</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="part-master-filters card-toolbar">
+              <label class="search-field">
+                <svg class="i"><use href="#i-search"/></svg>
+                <input type="text" id="part-master-search" placeholder="搜尋部品代號、擔當人員" oninput="renderPartLineSettings()">
+              </label>
+
+              <select id="part-master-line-filter" onchange="renderPartLineSettings()" aria-label="篩選加工線別">
+                <option value="">全部加工線別</option>
+              </select>
+
+              <select id="part-master-supplier-filter" onchange="renderPartLineSettings()" aria-label="篩選素材廠商">
+                <option value="">全部素材廠商</option>
+              </select>
+
+              <button class="btn btn-danger-ghost btn-sm push-right" onclick="disableSelectedParts()">
+                <svg class="i"><use href="#i-ban"/></svg>停用勾選部品
+              </button>
+            </div>
+
+            <div class="table-wrap">
+              <table id="part-line-table" class="data-table">
+                <thead>
+                  <tr>
+                    <th class="col-check"><input type="checkbox" aria-label="全選" onchange="toggleAllParts(this.checked)"></th>
+                    <th>部品代號</th>
+                    <th>加工線別</th>
+                    <th>素材廠商</th>
+                    <th>擔當人員</th>
+                    <th class="num">OP 數</th>
+                    <th class="col-actions"></th>
+                  </tr>
+                </thead>
+                <tbody id="part-line-tbody"></tbody>
+              </table>
+            </div>
+
+            <div id="part-line-empty" class="empty-state">
+              <div class="empty-icon"><svg class="i"><use href="#i-part"/></svg></div>
+              <p>尚無部品資料</p>
+              <span>請先建立組車機種 BOM</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── 設備需求時間 ── -->
+        <section id="tab-machine-time" class="tab-pane">
+          <div class="page-header">
+            <div>
+              <h2>設備需求時間</h2>
+              <p id="machine-time-summary">依每日加工數與 NT 計算</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>日期</th>
+                    <th>加工線</th>
+                    <th>部品代號</th>
+                    <th>OP</th>
+                    <th>管理編號</th>
+                    <th class="num">加工數</th>
+                    <th class="num">NT（秒）</th>
+                    <th class="num">需求（分）</th>
+                    <th class="num">需求（時）</th>
+                  </tr>
+                </thead>
+                <tbody id="machine-time-tbody"></tbody>
+              </table>
+            </div>
+            <div id="machine-time-empty" class="empty-state">
+              <div class="empty-icon"><svg class="i"><use href="#i-timer"/></svg></div>
+              <p>尚無設備需求資料</p>
+              <span>需要每日部品計畫，以及加工部品主檔裡的 OP／NT</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── 產能負荷分析 ── -->
+        <section id="tab-capacity" class="tab-pane">
+          <div class="page-header">
+            <div>
+              <h2>產能負荷分析</h2>
+              <p>依各加工線的出勤天數與班別，計算設備與加工群組負荷率</p>
+            </div>
+          </div>
+          <div id="capacity-line-settings" class="capacity-list">尚未載入 LINE 設定</div>
+        </section>
+
+        <!-- ── 設備主檔 ── -->
+        <section id="tab-equipment" class="tab-pane">
+          <div class="page-header">
+            <div>
+              <h2>設備主檔</h2>
+              <p id="equipment-summary">管理各加工線設備</p>
+            </div>
+            <div class="toolbar">
+              <input type="file" id="equipment-excel-file" accept=".xlsx,.xls" hidden onchange="importEquipmentMaster()">
+              <button class="btn btn-ghost" onclick="document.getElementById('equipment-excel-file').click()">
+                <svg class="i"><use href="#i-upload"/></svg>轉入
+              </button>
+              <button class="btn btn-ghost" onclick="exportEquipmentMaster()">
+                <svg class="i"><use href="#i-download"/></svg>轉出
+              </button>
+              <button class="btn btn-primary" onclick="addEquipment()">
+                <svg class="i"><use href="#i-plus"/></svg>新增設備
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>管理編號</th>
+                    <th>設備名稱</th>
+                    <th>所屬部門</th>
+                    <th>所屬 LINE</th>
+                    <th>設備群組</th>
+                    <th>關鍵設備</th>
+                    <th class="col-actions"></th>
+                  </tr>
+                </thead>
+                <tbody id="equipment-tbody"></tbody>
+              </table>
+            </div>
+            <div id="equipment-empty" class="empty-state">
+              <div class="empty-icon"><svg class="i"><use href="#i-factory"/></svg></div>
+              <p>尚未建立設備資料</p>
+              <span>按「新增設備」或「轉入」建立</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── 加工數彙總 ── -->
+        <section id="tab-result" class="tab-pane">
+          <div class="page-header">
+            <div>
+              <h2>加工數彙總</h2>
+              <p>依生產計畫計算各部品加工總量</p>
+            </div>
+            <div class="toolbar">
+              <button class="btn btn-ghost" onclick="exportCSV()">
+                <svg class="i"><use href="#i-download"/></svg>匯出 CSV
+              </button>
+            </div>
+          </div>
+
+          <div class="kpi-grid">
+            <div class="kpi"><span class="kpi-label">機種數</span><strong class="kpi-value" id="stat-models">0</strong></div>
+            <div class="kpi"><span class="kpi-label">生產台數</span><strong class="kpi-value" id="stat-units">0</strong></div>
+            <div class="kpi"><span class="kpi-label">部品種類</span><strong class="kpi-value" id="stat-parts">0</strong></div>
+            <div class="kpi"><span class="kpi-label">加工總數</span><strong class="kpi-value" id="stat-qty">0</strong></div>
+          </div>
+
+          <div class="card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>部品代號</th>
+                    <th class="num">加工數量</th>
+                    <th>來源機種</th>
+                  </tr>
+                </thead>
+                <tbody id="result-tbody"></tbody>
+              </table>
+            </div>
+            <div id="result-empty" class="empty-state" style="display:none">
+              <div class="empty-icon"><svg class="i"><use href="#i-sigma"/></svg></div>
+              <p>尚無計算結果</p>
+              <span>請先建立 BOM，並在「生產計畫」加入台數</span>
+            </div>
+          </div>
+        </section>
+
+      </main>
     </div>
-  </header>
+  </div>
 
-  <!-- ===== TAB NAV ===== -->
-  <nav class="tab-nav">
-    <div class="tab-nav-inner">
-      <button class="tab-btn active" data-tab="bom">📋 BOM 管理</button>
-      <button class="tab-btn" data-tab="production">📥 生產計畫</button>
-      <button class="tab-btn" data-tab="daily">🗓️ 每日部品計畫</button>
-      <button class="tab-btn" data-tab="part-lines">⚙️ 加工部品主檔</button>
-      <button class="tab-btn" data-tab="equipment">🏭 設備主檔</button>
-      <button class="tab-btn" data-tab="machine-time">⏱️ 設備需求時間</button>
-      <button class="tab-btn" data-tab="capacity">📈 產能負荷分析</button>
-      <button class="tab-btn" data-tab="result">📊 加工數彙總</button>
-    </div>
-  </nav>
-
-  <!-- ===== MAIN ===== -->
-  <main class="main-content">
-
-    <!-- ── BOM TAB ── -->
-    <section id="tab-bom" class="tab-pane active">
-      <div class="page-header">
-        <div>
-          <h2>BOM 管理</h2>
-          <p id="bom-count">載入中…</p>
-        </div>
-        <div style="display:flex; gap:0.5rem; align-items:center">
-
-          <input type="file" id="bom-excel-file" accept=".xlsx,.xls" style="display:none" onchange="importBOMMaster()">
-
-          <button class="btn btn-secondary" onclick="document.getElementById('bom-excel-file').click()">
-            📥 BOM 轉入
-          </button>
-
-          <button class="btn btn-success" onclick="exportBOMMaster()">
-            📤 BOM 轉出
-          </button>
-
-          <button class="btn btn-primary" onclick="openAddModal()">
-            ＋ 新增機種
-          </button>
-
-        </div>
-      </div>
-      <div class="form-group" style="max-width:420px">
-        <label for="bom-search-input">快速搜尋</label>
-        <input type="text" id="bom-search-input" placeholder="輸入機種代號或部品件號">
-      </div>
-      <div class="card">
-        <div class="table-wrap">
-          <table id="bom-table">
-            <thead id="bom-thead"></thead>
-
-            <tbody id="bom-tbody"></tbody>
-          </table>
-        </div>
-        <div id="bom-empty" class="empty-state" style="display:none">
-          <div class="empty-icon">📭</div>
-          <p>尚無 BOM 資料</p>
-          <span>點擊右上角「新增機種」開始建立資料庫</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── PRODUCTION TAB ── -->
-    <section id="tab-production" class="tab-pane">
-      <div class="page-header">
-        <div>
-          <h2>生產計畫</h2>
-          <p id="plan-count">尚無資料</p>
-        </div>
-        <button class="btn btn-danger btn-sm" onclick="clearPlan()">🗑️ 清空計畫</button>
-      </div>
-
-      <div class="prod-layout">
-        <!-- Input form -->
-        <div class="form-card">
-          <h3>➕ 新增生產項目</h3>
-          <div class="form-group">
-            <label for="excel-file">匯入生產計畫 Excel</label>
-            <input type="file" id="excel-file" accept=".xlsx,.xls">
-          </div>
-
-          <button class="btn btn-success" style="width:100%; margin-bottom:1rem" onclick="importExcel()">
-            📂 讀取 Excel
-          </button>
-          <div class="form-group">
-            <label for="plan-model-select">機種代號</label>
-            <select id="plan-model-select">
-              <option value="">-- 請先至 BOM 管理建立機種 --</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="plan-qty">生產數量（台）</label>
-            <input type="number" id="plan-qty" min="1" placeholder="輸入生產台數">
-          </div>
-          <button class="btn btn-primary" style="width:100%" onclick="addPlanItem()">加入計畫</button>
-        </div>
-
-        <!-- Plan list -->
-        <div class="form-card">
-          <h3>📋 目前生產計畫</h3>
-          <div id="plan-list" class="plan-list"></div>
-          <div id="plan-empty" class="empty-state" style="padding:2rem 0">
-            <div class="empty-icon">📝</div>
-            <p>尚未加入任何生產項目</p>
-          </div>
-          <hr style="border:none; border-top:1px solid var(--border); margin:1.5rem 0">
-
-          <h3>⚠️ 待建立 BOM</h3>
-          <p id="pending-count" style="font-size:0.8rem; color:var(--text-sub); margin-bottom:1rem">
-            0 筆待處理
-          </p>
-
-          <div id="pending-list" class="plan-list"></div>
-
-          <div id="pending-empty" class="empty-state" style="padding:1.5rem 0">
-            <div class="empty-icon">✅</div>
-            <p>目前沒有待建立的 BOM</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── DAILY PARTS TAB ── -->
-    <section id="tab-daily" class="tab-pane">
-      <div class="page-header">
-        <div>
-          <h2>每日部品計畫</h2>
-          <p id="daily-plan-summary">尚未匯入每日生產資料</p>
-        </div>
-        <div>
-          <select id="daily-line-filter" onchange="renderDailyParts()">
-            <option value="">全部加工線</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="table-wrap">
-          <table id="daily-parts-table">
-            <thead id="daily-parts-thead"></thead>
-            <tbody id="daily-parts-tbody"></tbody>
-          </table>
-        </div>
-
-        <div id="daily-parts-empty" class="empty-state">
-          <div class="empty-icon">🗓️</div>
-          <p>尚無每日部品計畫</p>
-          <span>請先至「生產計畫」匯入 Excel</span>
-        </div>
-      </div>
-    </section>
-    <!-- ── PART LINE SETTINGS TAB ── -->
-    <section id="tab-part-lines" class="tab-pane">
-      <div class="page-header">
-        <div>
-          <h2>加工部品主檔</h2>
-          <p id="part-line-summary">管理部品加工線別、加工設備與 NT</p>
-        </div>
-
-        <input type="file" id="part-master-excel-file" accept=".xlsx,.xls" style="display:none"
-          onchange="importPartMaster()">
-
-        <button class="btn btn-secondary" onclick="document.getElementById('part-master-excel-file').click()">
-          📥 主檔轉入
-        </button>
-
-        <button class="btn btn-success" onclick="exportPartMaster()">
-          📤 主檔轉出
-        </button>
-        <button class="btn btn-primary" onclick="addLineMaster()">
-          ＋ 新增線別／廠商
-        </button>
-        <button class="btn btn-danger" onclick="deleteLineMaster()">
-          － 刪除線別／廠商
-        </button>
-        <button class="btn btn-primary" onclick="addSupplierMaster()">
-          ＋ 新增素材廠商
-        </button>
-
-        <button class="btn btn-danger" onclick="deleteSupplierMaster()">
-          － 刪除素材廠商
-        </button>
-        <button class="btn btn-danger" onclick="disableSelectedParts()">
-          🚫 停用選取部品
-        </button>
-        <button class="btn btn-secondary" onclick="restoreInvalidPart()">
-          🚫 停用部品管理
-        </button>
-      </div>
-
-      <div class="card">
-        <div class="table-wrap">
-          <table id="part-line-table">
-            <thead>
-              <tr>
-                <th>選取</th>
-                <th>部品代號</th>
-                <th>加工線別</th>
-                <th>素材廠商</th>
-                <th>擔當人員</th>
-                <th>OP數量</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody id="part-line-tbody"></tbody>
-          </table>
-        </div>
-
-        <div id="part-line-empty" class="empty-state">
-          <div class="empty-icon">⚙️</div>
-          <p>尚無部品資料</p>
-          <span>請先建立組車機種 BOM</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── MACHINE TIME TAB ── -->
-    <section id="tab-machine-time" class="tab-pane">
-      <div class="page-header">
-        <div>
-          <h2>設備需求時間</h2>
-          <p id="machine-time-summary">依每日加工數與 NT 計算</p>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>日期</th>
-                <th>加工線</th>
-                <th>部品代號</th>
-                <th>OP</th>
-                <th>管理編號</th>
-                <th>加工數</th>
-                <th>NT（秒）</th>
-                <th>需求時間（分）</th>
-                <th>需求時間（時）</th>
-              </tr>
-            </thead>
-
-            <tbody id="machine-time-tbody"></tbody>
-          </table>
-        </div>
-
-        <div id="machine-time-empty" class="empty-state">
-          <div class="empty-icon">⏱️</div>
-          <p>尚無設備需求資料</p>
-          <span>請先建立每日部品計畫與 OP／NT 資料</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===== CAPACITY LOAD ANALYSIS TAB ===== -->
-    <section id="tab-capacity" class="tab-pane">
-
-      <div class="page-header">
-        <div>
-          <h2>📈 產能負荷分析</h2>
-          <p>依各 LINE 設定出勤、班別與生產條件</p>
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>⚙️ LINE 計算條件</h3>
-
-        <p style="margin-top:0.5rem; color:var(--text-muted)">
-          各加工線可分別設定出勤天數、班別、換模與多部品修正條件。
-        </p>
-
-        <div id="capacity-line-settings">
-          尚未載入 LINE 設定
-        </div>
-      </div>
-
-    </section>
-
-    <!-- ── EQUIPMENT MASTER TAB ── -->
-    <section id="tab-equipment" class="tab-pane">
-
-      <div class="page-header">
-        <div>
-          <h2>設備主檔</h2>
-          <p id="equipment-summary">管理各加工線設備</p>
-        </div>
-
-        <div style="display:flex; gap:0.5rem; align-items:center">
-
-          <input type="file" id="equipment-excel-file" accept=".xlsx,.xls" style="display:none"
-            onchange="importEquipmentMaster()">
-
-          <button class="btn btn-secondary" onclick="document.getElementById('equipment-excel-file').click()">
-            📥 主檔轉入
-          </button>
-
-          <button class="btn btn-success" onclick="exportEquipmentMaster()">
-            📤 主檔轉出
-          </button>
-
-          <button class="btn btn-primary" onclick="addEquipment()">
-            ＋ 新增設備
-          </button>
-
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="table-wrap">
-
-          <table>
-            <thead>
-              <tr>
-                <th>管理編號</th>
-                <th>設備名稱</th>
-                <th>所屬部門</th>
-                <th>所屬 LINE</th>
-                <th>設備群組</th>
-                <th>關鍵設備</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-
-            <tbody id="equipment-tbody"></tbody>
-          </table>
-
-        </div>
-
-        <div id="equipment-empty" class="empty-state">
-          <div class="empty-icon">🏭</div>
-          <p>尚未建立設備資料</p>
-          <span>請新增各加工線的設備</span>
-        </div>
-      </div>
-
-    </section>
-    <!-- ── RESULT TAB ── -->
-    <section id="tab-result" class="tab-pane">
-      <div class="page-header">
-        <div>
-          <h2>加工數彙總</h2>
-          <p>依生產計畫自動計算各部品加工總量</p>
-        </div>
-        <button class="btn btn-success" onclick="exportCSV()">⬇️ 匯出 CSV</button>
-      </div>
-
-      <!-- Stats -->
-      <div class="stat-grid">
-        <div class="stat-card">
-          <div class="stat-value" id="stat-models">0</div>
-          <div class="stat-label">機種數</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="stat-units">0</div>
-          <div class="stat-label">生產台數</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="stat-parts">0</div>
-          <div class="stat-label">部品種類</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="stat-qty">0</div>
-          <div class="stat-label">加工總數</div>
-        </div>
-      </div>
-
-      <!-- Result table -->
-      <div class="card">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>部品代號</th>
-                <th>加工數量</th>
-                <th>來源機種</th>
-              </tr>
-            </thead>
-            <tbody id="result-tbody"></tbody>
-          </table>
-        </div>
-        <div id="result-empty" class="empty-state" style="display:none">
-          <div class="empty-icon">📊</div>
-          <p>尚無計算結果</p>
-          <span>請先建立 BOM 資料，並在「生產計畫」頁面輸入生產台數</span>
-        </div>
-      </div>
-    </section>
-
-  </main>
-
-  <!-- ===== MODAL ===== -->
+  <!-- ===== BOM 視窗 ===== -->
   <div id="modal-overlay" class="modal-overlay hidden">
-    <div class="modal">
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div class="modal-header">
         <h3 id="modal-title">新增機種 BOM</h3>
-        <button class="modal-close" onclick="closeModal()">×</button>
+        <button class="icon-btn" onclick="closeModal()" aria-label="關閉"><svg class="i"><use href="#i-x"/></svg></button>
       </div>
       <div class="modal-body">
-        <div class="form-group modal-model-field" style="grid-column:1/-1">
+        <div class="form-group">
           <label for="modal-model">機種代號</label>
-          <input type="text" id="modal-model" placeholder="例：SA25AE" style="text-transform:uppercase">
+          <input type="text" id="modal-model" placeholder="例：SA25AE" class="mono upper">
         </div>
-        <p style="font-size:0.8rem;color:var(--text-sub);margin-bottom:1rem">
-          填入各部品對應的加工件號（沒有該部品請留空）
-        </p>
-        <div class="modal-form-grid" id="bom-modal-fields">
-        </div>
+        <p class="form-hint">填入各部品對應的加工件號，沒有該部品請留空</p>
+        <div class="modal-form-grid" id="bom-modal-fields"></div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
-        <button class="btn btn-primary" onclick="saveModal()">💾 儲存</button>
+        <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="saveModal()"><svg class="i"><use href="#i-check"/></svg>儲存</button>
       </div>
     </div>
   </div>
 
-  <!-- ===== TOAST ===== -->
-  <div id="toast-container" class="toast-container"></div>
-  <!-- ── PART MASTER MODAL ── -->
+  <!-- ===== 加工部品 OP 視窗 ===== -->
   <div id="part-master-overlay" class="modal-overlay hidden">
-    <div class="modal" style="max-width:750px">
+    <div class="modal modal-wide" role="dialog" aria-modal="true">
       <div class="modal-header">
-        <h3>加工部品設定</h3>
-        <button class="modal-close" onclick="closePartMaster()">✕</button>
-      </div>
-
-      <div class="modal-body">
-        <div style="margin-bottom:1rem">
-          <strong>部品代號：</strong>
-          <span id="part-master-code"></span>
+        <div>
+          <h3>加工部品設定</h3>
+          <p class="modal-sub">部品代號 <span id="part-master-code" class="mono"></span></p>
         </div>
-
-        <table>
+        <button class="icon-btn" onclick="closePartMaster()" aria-label="關閉"><svg class="i"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <table class="data-table compact">
           <thead>
             <tr>
-              <th>OP編號</th>
+              <th>OP 編號</th>
               <th>管理編號</th>
-              <th>NT（秒）</th>
-              <th>操作</th>
+              <th class="num">NT（秒）</th>
+              <th class="col-actions"></th>
             </tr>
           </thead>
-
           <tbody id="part-master-ops"></tbody>
         </table>
-
-        <button class="btn btn-secondary" onclick="addPartOperationRow()" style="margin-top:1rem">
-          ＋ 新增 OP
+        <button class="btn btn-ghost btn-sm" onclick="addPartOperationRow()" style="margin-top:.75rem">
+          <svg class="i"><use href="#i-plus"/></svg>新增 OP
         </button>
       </div>
-
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closePartMaster()">
-          取消
-        </button>
-
-        <button class="btn btn-primary" onclick="savePartMaster()">
-          儲存
-        </button>
+        <button class="btn btn-ghost" onclick="closePartMaster()">取消</button>
+        <button class="btn btn-primary" onclick="savePartMaster()"><svg class="i"><use href="#i-check"/></svg>儲存</button>
       </div>
     </div>
   </div>
+
+  <!-- ===== 通用對話框 ===== -->
+  <div id="dialog-overlay" class="modal-overlay hidden">
+    <div class="modal modal-narrow" role="alertdialog" aria-modal="true" aria-labelledby="dialog-title">
+      <div class="modal-body dialog-body">
+        <div class="dialog-icon" id="dialog-icon"></div>
+        <div class="dialog-main">
+          <h3 id="dialog-title"></h3>
+          <p id="dialog-message"></p>
+          <div id="dialog-field"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="dialog-cancel">取消</button>
+        <button class="btn btn-primary" id="dialog-ok">確定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 指令面板 ===== -->
+  <div id="cmdk-overlay" class="cmdk-overlay hidden" onclick="if (event.target === this) closeCommandPalette()">
+    <div class="cmdk" role="dialog" aria-modal="true" aria-label="指令面板">
+      <label class="cmdk-input">
+        <svg class="i"><use href="#i-search"/></svg>
+        <input type="text" id="cmdk-input" placeholder="輸入功能名稱，例如：負荷、匯入、BOM" autocomplete="off">
+        <kbd>Esc</kbd>
+      </label>
+      <div class="cmdk-list" id="cmdk-list" role="listbox"></div>
+      <div class="cmdk-foot">
+        <span><kbd>↑</kbd><kbd>↓</kbd> 選擇</span>
+        <span><kbd><svg class="i"><use href="#i-enter"/></svg></kbd> 執行</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <script src="./libs/xlsx.full.min.js"></script>
   <script src="app.js"></script>
