@@ -95,6 +95,7 @@
           <button class="tab-btn active" data-tab="bom"><svg class="i"><use href="#i-bom"/></svg><span>BOM 管理</span></button>
           <button class="tab-btn" data-tab="part-lines"><svg class="i"><use href="#i-part"/></svg><span>加工部品主檔</span></button>
           <button class="tab-btn" data-tab="equipment"><svg class="i"><use href="#i-factory"/></svg><span>設備主檔</span></button>
+          <button class="tab-btn" data-tab="line-inbox"><svg class="i"><use href="#i-inbox"/></svg><span>LINE 收件匣</span><em class="nav-badge nav-badge-warn" id="inbox-badge" hidden>0</em></button>
         </div>
       </nav>
 
@@ -259,6 +260,9 @@
               <select id="daily-line-filter" onchange="renderDailyParts()" aria-label="篩選加工線">
                 <option value="">全部加工線</option>
               </select>
+              <button class="btn btn-ghost" onclick="exportDailyDemand()">
+                <svg class="i"><use href="#i-download"/></svg>轉出日需求 Excel
+              </button>
             </div>
           </div>
 
@@ -370,6 +374,51 @@
               </div>
               <div id="line-load-warnings"></div>
             </div>
+          </div>
+        </section>
+
+        <!-- ── LINE 收件匣 ── -->
+        <section id="tab-line-inbox" class="tab-pane">
+          <div class="page-header">
+            <div>
+              <h2>LINE 收件匣</h2>
+              <p id="line-inbox-summary">班長在 LINE 填寫的 BOM，審核專員確認後才會加入系統</p>
+            </div>
+            <div class="toolbar">
+              <button class="btn btn-ghost" onclick="openLineBotSettings()">
+                <svg class="i"><use href="#i-part"/></svg>設定
+              </button>
+              <input type="file" id="line-inbox-file" accept=".json" hidden onchange="importLineInboxFile()">
+              <button class="btn btn-ghost" onclick="document.getElementById('line-inbox-file').click()">
+                <svg class="i"><use href="#i-upload"/></svg>從檔案匯入
+              </button>
+              <button class="btn btn-secondary" onclick="sendMissingBOMList()">
+                <svg class="i"><use href="#i-plan"/></svg>送出缺 BOM 清單
+              </button>
+              <button class="btn btn-primary" onclick="syncLineInbox()">
+                <svg class="i"><use href="#i-restore"/></svg>同步
+              </button>
+            </div>
+          </div>
+
+          <div class="card card-toolbar inbox-status" id="line-inbox-status"></div>
+
+          <div id="line-inbox-list" class="inbox-list"></div>
+
+          <div id="line-inbox-empty" class="empty-state card">
+            <div class="empty-icon ok"><svg class="i"><use href="#i-check"/></svg></div>
+            <p>沒有待審核的資料</p>
+            <span>按「同步」從機器人拿班長填好的 BOM</span>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">已處理紀錄</h3>
+                <p class="card-sub">最近 30 筆，含審核專員與時間</p>
+              </div>
+            </div>
+            <div class="table-wrap" id="line-inbox-history"></div>
           </div>
         </section>
 

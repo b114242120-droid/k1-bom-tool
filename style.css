@@ -835,6 +835,40 @@ td input[type="text"], td input[type="number"], td select { height: 30px; font-s
 
 .warn-list li span:last-child { font-family: var(--font-mono); color: var(--text-sub); }
 
+/* ===== LINE 收件匣 ===== */
+.nav-badge-warn { color: var(--warn-text); background: var(--warn-soft); }
+
+.inbox-status {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+  gap: 12px;
+  font-size: 0.86rem;
+}
+
+.inbox-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.inbox-list:empty { display: none; }
+.inbox-list .card + .card { margin-top: 0; }
+
+.inbox-item .card-title { flex-wrap: wrap; }
+.inbox-item .card-head { flex-wrap: wrap; }
+.inbox-body { padding: 0 20px 16px; }
+.inbox-body .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); }
+
+.inbox-warn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 20px 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  font-size: 0.84rem;
+  color: var(--warn-text);
+  background: var(--warn-soft);
+}
+
+#line-inbox-empty + .card { margin-top: 16px; }
+
 /* ===== 生產計畫 ===== */
 .prod-layout {
   display: grid;

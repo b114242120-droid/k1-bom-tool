@@ -12,6 +12,9 @@ const LINE_MASTER_KEY = 'k1_line_master';
 const INVALID_PARTS_KEY = 'k1_invalid_parts';
 const SUPPLIER_MASTER_KEY = 'k1_supplier_master';
 const PART_INFO_KEY = 'k1_part_info';
+const LINE_INBOX_KEY = 'k1_line_inbox';
+const LINE_BOT_KEY = 'k1_line_bot';
+const NO_MACHINING_KEY = 'k1_no_machining_models';
 
 const DEFAULT_PART_TYPES = [
   'L CASE',
@@ -82,6 +85,15 @@ function buildBOMLookup(bom = loadBOM()) {
 
   return lookup;
 } // buildBOMLookup 結束
+
+// 班長確認「不需加工」的機種（存正規化後的代號）
+function loadNoMachiningModels() {
+  return JSON.parse(localStorage.getItem(NO_MACHINING_KEY) || '[]');
+} // loadNoMachiningModels 結束
+
+function saveNoMachiningModels(models) {
+  localStorage.setItem(NO_MACHINING_KEY, JSON.stringify([...new Set(models)].sort()));
+} // saveNoMachiningModels 結束
 
 function loadPlan() { return JSON.parse(localStorage.getItem(PLAN_KEY) || '[]'); }
 function savePlan(d) { localStorage.setItem(PLAN_KEY, JSON.stringify(d)); }
@@ -683,6 +695,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     try { localStorage.setItem('k1_last_tab', btn.dataset.tab); } catch (e) { /* 忽略 */ }
     if (btn.dataset.tab === 'daily') renderDailyParts();
     if (btn.dataset.tab === 'line-load') renderLineLoad();
+    if (btn.dataset.tab === 'line-inbox') renderLineInbox();
     if (btn.dataset.tab === 'part-lines') renderPartLineSettings();
     if (btn.dataset.tab === 'equipment') renderEquipmentMaster();
     if (btn.dataset.tab === 'machine-time') renderMachineRequiredTime();
@@ -2776,27 +2789,37 @@ function calculateLineLoad() {
   const bomLookup = buildBOMLookup();
   const partLines = loadPartLines();
   const invalidSet = new Set(loadInvalidParts());
+  const noMachiningSet = new Set(loadNoMachiningModels());
 
   const load = {};
   const unassignedParts = {};
   const noBOMModels = {};
   const emptyBOMModels = {};
+  const noMachiningModels = {};
   const units = {};
 
   Object.entries(dailyPlan).forEach(([dateKey, models]) => {
     Object.entries(models).forEach(([model, qty]) => {
       units[dateKey] = (units[dateKey] || 0) + qty;
 
-      const row = bomLookup[normalizeModelCode(model)];
+      const normalized = normalizeModelCode(model);
+      const row = bomLookup[normalized];
+      const codes = row
+        ? PART_TYPES
+          .map(type => String(row[type] || '').trim())
+          .filter(code => code && !invalidSet.has(code))
+        : [];
+
+      // 已確認不需加工的機種：不算進加工線，也不列為待補
+      if (codes.length === 0 && noMachiningSet.has(normalized)) {
+        addNestedQty(noMachiningModels, model, dateKey, qty);
+        return;
+      }
 
       if (!row) {
         addNestedQty(noBOMModels, model, dateKey, qty);
         return;
       }
-
-      const codes = PART_TYPES
-        .map(type => String(row[type] || '').trim())
-        .filter(code => code && !invalidSet.has(code));
 
       if (codes.length === 0) {
         addNestedQty(emptyBOMModels, model, dateKey, qty);
@@ -2840,7 +2863,8 @@ function calculateLineLoad() {
     units,
     unassignedParts,
     noBOMModels,
-    emptyBOMModels
+    emptyBOMModels,
+    noMachiningModels
   };
 } // calculateLineLoad 結束
 
@@ -3032,6 +3056,607 @@ function renderLineLoad() {
       `;
     }).join('');
 } // renderLineLoad 結束
+
+// 各部品每日需求：每月一張表（部品 × 日期），另附一張依加工線的日合計
+function exportDailyDemand() {
+  const dailyParts = calculateDailyParts();
+
+  if (dailyParts.length === 0) {
+    toast('尚無每日部品計畫可轉出，請先匯入組車計畫', 'error');
+    return;
+  }
+
+  const partLines = loadPartLines();
+  const partInfo = loadPartInfo();
+  const dates = [...new Set(dailyParts.flatMap(item => Object.keys(item.dates)))].sort();
+  const months = [...new Set(dates.map(dateKey => dateKey.slice(0, 7)))];
+  const weekday = dateKey => WEEKDAY_LABELS[new Date(`${dateKey}T00:00:00`).getDay()];
+  const lineName = code => partLines[code] ? formatLineLabel(partLines[code]) : '未設定';
+
+  // 依加工線、部品代號排序，同一條線的部品排在一起
+  const lineOrder = [...getProcessLines()];
+  const sorted = [...dailyParts].sort((a, b) => {
+    const la = partLines[a.code], lb = partLines[b.code];
+    const ia = la ? (lineOrder.indexOf(la) + 1 || 900) : 999;
+    const ib = lb ? (lineOrder.indexOf(lb) + 1 || 900) : 999;
+    return ia - ib || String(la || '').localeCompare(String(lb || ''), 'zh-TW') || a.code.localeCompare(b.code);
+  });
+
+  const workbook = XLSX.utils.book_new();
+
+  months.forEach(month => {
+    const monthDates = dates.filter(dateKey => dateKey.startsWith(month));
+    const rows = sorted
+      .map(item => {
+        const values = monthDates.map(dateKey => item.dates[dateKey] || 0);
+        const total = values.reduce((a, b) => a + b, 0);
+        return { item, values, total };
+      })
+      .filter(row => row.total > 0);
+
+    const header = [
+      '加工線別', '部品代號', '素材廠商', '擔當人員', '月合計',
+      ...monthDates.map(dateKey => `${formatDailyDate(dateKey)}(${weekday(dateKey)})`)
+    ];
+
+    const body = rows.map(({ item, values, total }) => [
+      lineName(item.code),
+      item.code,
+      partInfo[item.code]?.supplier || '',
+      partInfo[item.code]?.owner || '',
+      total,
+      ...values.map(qty => qty || '')
+    ]);
+
+    const totals = monthDates.map((_, i) => rows.reduce((sum, row) => sum + row.values[i], 0));
+    const footer = ['合計', '', '', '', totals.reduce((a, b) => a + b, 0), ...totals];
+
+    const sheet = XLSX.utils.aoa_to_sheet([header, ...body, footer]);
+    sheet['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 10 }, { wch: 10 }, { wch: 9 }, ...monthDates.map(() => ({ wch: 8 }))];
+    sheet['!freeze'] = { xSplit: 2, ySplit: 1 };
+
+    XLSX.utils.book_append_sheet(workbook, sheet, `部品日需求_${month}`);
+  });
+
+  // 加工線 × 日期 合計
+  const lineLoad = calculateLineLoad();
+  const lineRows = [
+    ['加工線', ...dates.map(dateKey => `${formatDailyDate(dateKey)}(${weekday(dateKey)})`), '合計'],
+    ...lineLoad.lines.map(line => {
+      const values = dates.map(dateKey => lineLoad.load[line]?.[dateKey] || 0);
+      return [
+        line === UNASSIGNED_LINE ? '未設定線別' : formatLineLabel(line),
+        ...values.map(qty => qty || ''),
+        values.reduce((a, b) => a + b, 0)
+      ];
+    })
+  ];
+
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(lineRows), '加工線日合計');
+
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  XLSX.writeFile(workbook, `部品日需求_${stamp}.xlsx`);
+  toast(`已轉出 ${sorted.length} 種部品的日需求`, 'success');
+} // exportDailyDemand 結束
+
+// ===== LINE 收件匣（班長填的 BOM → 審核專員確認後才進系統） =====
+// 介面格式見 docs/LINE機器人介面.md
+
+function loadLineInbox() {
+  try { return JSON.parse(localStorage.getItem(LINE_INBOX_KEY) || '{}'); } catch (e) { return {}; }
+} // loadLineInbox 結束
+
+function saveLineInbox(inbox) {
+  localStorage.setItem(LINE_INBOX_KEY, JSON.stringify(inbox));
+} // saveLineInbox 結束
+
+function loadLineBotSettings() {
+  try { return JSON.parse(localStorage.getItem(LINE_BOT_KEY) || '{}'); } catch (e) { return {}; }
+} // loadLineBotSettings 結束
+
+function saveLineBotSettings(settings) {
+  localStorage.setItem(LINE_BOT_KEY, JSON.stringify(settings));
+} // saveLineBotSettings 結束
+
+async function openLineBotSettings() {
+  const current = loadLineBotSettings();
+
+  const url = await uiPrompt('n8n 對外網址加上 /webhook，例如 https://xxxx.ngrok-free.dev/webhook。只存在這台電腦的瀏覽器。', {
+    title: '機器人網址',
+    placeholder: 'https://…/webhook',
+    defaultValue: current.url || '',
+    okText: '下一步'
+  });
+  if (url === null) return false;
+
+  const key = await uiPrompt('與 n8n 約定的存取碼，用來確認是 K1 在拿資料。', {
+    title: '存取碼',
+    placeholder: '存取碼',
+    defaultValue: current.key || '',
+    okText: '下一步'
+  });
+  if (key === null) return false;
+
+  const reviewer = await uiPrompt('確認或退回時會記錄這個名字，並通知填寫的班長。', {
+    title: '審核專員名稱',
+    placeholder: '例如：王小明',
+    defaultValue: current.reviewer || '',
+    okText: '儲存'
+  });
+  if (reviewer === null) return false;
+
+  saveLineBotSettings({ url: url.replace(/\/+$/, ''), key, reviewer });
+  renderLineInbox();
+  toast('LINE 機器人設定已儲存', 'success');
+  return true;
+} // openLineBotSettings 結束
+
+async function ensureReviewer() {
+  const settings = loadLineBotSettings();
+  if (settings.reviewer) return settings.reviewer;
+
+  const reviewer = await uiPrompt('第一次審核前，請輸入審核專員名稱。', {
+    title: '審核專員名稱',
+    placeholder: '例如：王小明',
+    okText: '儲存'
+  });
+  if (!reviewer) return null;
+
+  saveLineBotSettings({ ...settings, reviewer });
+  return reviewer;
+} // ensureReviewer 結束
+
+async function botFetch(path, options = {}) {
+  const settings = loadLineBotSettings();
+
+  if (!settings.url) {
+    const saved = await openLineBotSettings();
+    if (!saved) throw new Error('尚未設定機器人網址');
+    return botFetch(path, options);
+  }
+
+  const response = await fetch(`${loadLineBotSettings().url}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-K1-Key': loadLineBotSettings().key || '',
+      'ngrok-skip-browser-warning': '1',
+      ...(options.headers || {})
+    }
+  });
+
+  if (response.status === 401) throw new Error('存取碼不對');
+  if (!response.ok) throw new Error(`機器人回應錯誤（${response.status}）`);
+
+  return response.json();
+} // botFetch 結束
+
+function describeBotError(error) {
+  const message = String(error?.message || error);
+  return /Failed to fetch|NetworkError|Load failed/i.test(message)
+    ? '連不到機器人：請確認電腦上的 Docker、n8n 與 ngrok 都有開'
+    : message;
+} // describeBotError 結束
+
+// 把收到的資料整理成統一格式，存進收件匣（已存在的不覆蓋，保留審核紀錄）
+function mergeInboxItems(items, source) {
+  const inbox = loadLineInbox();
+  let added = 0;
+
+  (Array.isArray(items) ? items : []).forEach(raw => {
+    const model = String(raw?.model || '').trim().toUpperCase();
+    if (!model) return;
+
+    const id = String(raw.id || `${model}-${raw.submittedAt || Date.now()}`);
+    if (inbox[id]) return;
+
+    const parts = {};
+    Object.entries(raw.parts || {}).forEach(([type, code]) => {
+      const value = String(code || '').trim().toUpperCase();
+      parts[String(type).trim()] = /^[-－–—−]+$/.test(value) ? '' : value;
+    });
+
+    inbox[id] = {
+      id,
+      model,
+      parts,
+      noMachining: Boolean(raw.noMachining),
+      note: String(raw.note || ''),
+      submittedBy: String(raw.submittedBy || '（未具名）'),
+      submittedById: String(raw.submittedById || ''),
+      submittedAt: String(raw.submittedAt || new Date().toISOString()),
+      source,
+      status: 'pending',
+      reported: source !== 'bot'
+    };
+    added++;
+  });
+
+  saveLineInbox(inbox);
+  return added;
+} // mergeInboxItems 結束
+
+async function syncLineInbox() {
+  const statusEl = document.getElementById('line-inbox-status');
+
+  try {
+    if (statusEl) statusEl.textContent = '同步中…';
+
+    await reportPendingResults();
+    const data = await botFetch('/k1-bom-inbox?status=pending');
+    const added = mergeInboxItems(data.items, 'bot');
+
+    const settings = loadLineBotSettings();
+    saveLineBotSettings({ ...settings, lastSync: new Date().toISOString() });
+
+    renderLineInbox();
+    toast(added ? `收到 ${added} 筆新的 BOM 資料，等待審核` : '沒有新的資料', 'success');
+  } catch (error) {
+    renderLineInbox(describeBotError(error));
+    toast(describeBotError(error), 'error');
+  }
+} // syncLineInbox 結束
+
+async function importLineInboxFile() {
+  const input = document.getElementById('line-inbox-file');
+  const file = input.files[0];
+  if (!file) return;
+
+  try {
+    const data = JSON.parse(await file.text());
+    const added = mergeInboxItems(Array.isArray(data) ? data : data.items, 'file');
+    renderLineInbox();
+    toast(`從檔案匯入 ${added} 筆，等待審核`, 'success');
+  } catch (error) {
+    toast('檔案格式不對，請參考 docs/LINE機器人介面.md', 'error');
+  } finally {
+    input.value = '';
+  }
+} // importLineInboxFile 結束
+
+// 把審核結果回報給機器人；失敗就留著下次同步再送
+async function reportInboxResult(item) {
+  if (item.source !== 'bot') return true;
+
+  try {
+    await botFetch('/k1-bom-inbox/result', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: item.id,
+        status: item.status,
+        reason: item.reason || '',
+        reviewer: item.reviewer || '',
+        reviewedAt: item.reviewedAt || ''
+      })
+    });
+    return true;
+  } catch (error) {
+    return false;
+  }
+} // reportInboxResult 結束
+
+async function reportPendingResults() {
+  const inbox = loadLineInbox();
+  const unreported = Object.values(inbox).filter(item => item.status !== 'pending' && !item.reported);
+
+  for (const item of unreported) {
+    if (await reportInboxResult(item)) inbox[item.id].reported = true;
+  }
+
+  if (unreported.length) saveLineInbox(inbox);
+} // reportPendingResults 結束
+
+// 待建立 BOM 的台數移進生產計畫（與「建立 BOM」視窗相同）
+function movePendingToPlan(model) {
+  const pending = loadPending();
+  const pendingItem = pending.find(item => normalizeModelCode(item.model) === normalizeModelCode(model));
+  if (!pendingItem) return 0;
+
+  const plan = loadPlan();
+  const existing = plan.find(item => item.model === model);
+
+  if (existing) existing.qty += pendingItem.qty;
+  else plan.push({ model, qty: pendingItem.qty });
+
+  savePlan(plan);
+  savePending(pending.filter(item => item !== pendingItem && item.model !== pendingItem.model));
+  return pendingItem.qty;
+} // movePendingToPlan 結束
+
+// 比對班長填的內容與目前 BOM，標出新增、變更與需要注意的地方
+function compareInboxItem(item) {
+  const bom = loadBOM();
+  const bomKey = Object.keys(bom).find(key => normalizeModelCode(key) === normalizeModelCode(item.model));
+  const current = bomKey ? bom[bomKey] : null;
+  const partLines = loadPartLines();
+  const knownParts = new Set([
+    ...Object.keys(partLines),
+    ...Object.keys(loadPartInfo()),
+    ...Object.values(bom).flatMap(row => Object.values(row || {}).filter(Boolean))
+  ]);
+
+  const rows = PART_TYPES.map(type => {
+    const before = current ? String(current[type] || '') : '';
+    const after = item.parts[type] || '';
+    let change = 'same';
+    if (after && !before) change = 'add';
+    else if (after && before && after !== before) change = 'change';
+    else if (!after) change = before ? 'keep' : 'none';
+
+    const warnings = [];
+    if (after && !knownParts.has(after)) warnings.push('新部品，記得到加工部品主檔設定加工線');
+    else if (after && !partLines[after]) warnings.push('這個部品還沒設定加工線');
+
+    return { type, before, after, change, warnings };
+  }).filter(row => row.change !== 'none');
+
+  const unknownTypes = Object.keys(item.parts).filter(type => item.parts[type] && !PART_TYPES.includes(type));
+  const filledCount = rows.filter(row => row.after).length;
+
+  return { bomKey, current, rows, unknownTypes, filledCount };
+} // compareInboxItem 結束
+
+async function approveInboxItem(id) {
+  const inbox = loadLineInbox();
+  const item = inbox[id];
+  if (!item || item.status !== 'pending') return;
+
+  const { bomKey, current, filledCount, unknownTypes } = compareInboxItem(item);
+
+  if (!item.noMachining && filledCount === 0) {
+    toast('這筆沒有填任何件號，請退回請班長補填', 'error');
+    return;
+  }
+
+  const reviewer = await ensureReviewer();
+  if (!reviewer) return;
+
+  const message = item.noMachining
+    ? `${item.model} 會標記為「不需加工」，之後不再列為待補資料。`
+    : `${item.model} 的 ${filledCount} 個部品件號會寫進 BOM${current ? '（只更新有填的欄位，其他保留）' : '（新增機種）'}。` +
+      (unknownTypes.length ? `\n\n注意：${unknownTypes.join('、')} 不是 BOM 的欄位，會被略過。` : '');
+
+  if (!await uiConfirm(message, { title: `確認 ${item.model}`, okText: '確認加入' })) return;
+
+  const bom = loadBOM();
+  const model = bomKey || item.model;
+  const row = { ...(bom[model] || {}) };
+
+  PART_TYPES.forEach(type => {
+    if (!(type in row)) row[type] = '';
+    if (!item.noMachining && item.parts[type]) row[type] = item.parts[type];
+  });
+
+  bom[model] = row;
+  saveBOM(bom);
+
+  if (item.noMachining) {
+    saveNoMachiningModels([...loadNoMachiningModels(), normalizeModelCode(model)]);
+  } else {
+    saveNoMachiningModels(loadNoMachiningModels().filter(m => m !== normalizeModelCode(model)));
+  }
+
+  const movedQty = movePendingToPlan(model);
+
+  Object.assign(item, {
+    status: 'approved',
+    reviewer,
+    reviewedAt: new Date().toISOString(),
+    reported: item.source !== 'bot'
+  });
+  saveLineInbox(inbox);
+
+  item.reported = await reportInboxResult(item);
+  saveLineInbox({ ...loadLineInbox(), [id]: item });
+
+  renderBOM();
+  renderPlan();
+  renderPending();
+  refreshPlanSelect();
+  renderLineInbox();
+
+  toast(
+    `已確認 ${model}` + (movedQty ? `，並加入生產計畫 ${movedQty} 台` : '') +
+    (item.source === 'bot' && !item.reported ? '（機器人暫時連不上，下次同步再通知班長）' : ''),
+    'success'
+  );
+} // approveInboxItem 結束
+
+async function rejectInboxItem(id) {
+  const inbox = loadLineInbox();
+  const item = inbox[id];
+  if (!item || item.status !== 'pending') return;
+
+  const reason = await uiPrompt('退回原因會傳給填寫的班長，例如：件號格式不對、機種代號打錯。', {
+    title: `退回 ${item.model}`,
+    placeholder: '退回原因（必填）',
+    okText: '退回'
+  });
+  if (!reason) return;
+
+  const reviewer = await ensureReviewer();
+  if (!reviewer) return;
+
+  Object.assign(item, {
+    status: 'rejected',
+    reason,
+    reviewer,
+    reviewedAt: new Date().toISOString(),
+    reported: item.source !== 'bot'
+  });
+  saveLineInbox(inbox);
+
+  item.reported = await reportInboxResult(item);
+  saveLineInbox({ ...loadLineInbox(), [id]: item });
+
+  renderLineInbox();
+  toast(`已退回 ${item.model}`, 'success');
+} // rejectInboxItem 結束
+
+// 把這個月缺 BOM 的機種送給機器人，讓它推播給班長
+async function sendMissingBOMList() {
+  const data = calculateLineLoad();
+
+  if (data.months.length === 0) {
+    toast('尚無組車計畫，請先匯入', 'error');
+    return;
+  }
+
+  const month = data.months
+    .map(m => [m, sumByMonth(data.units, m)])
+    .sort((a, b) => b[1] - a[1])[0][0];
+
+  const models = [
+    ...Object.entries(data.noBOMModels).map(([model, dates]) => ({ model, qty: sumByMonth(dates, month), reason: 'no-bom' })),
+    ...Object.entries(data.emptyBOMModels).map(([model, dates]) => ({ model, qty: sumByMonth(dates, month), reason: 'empty-bom' }))
+  ]
+    .filter(item => item.qty > 0)
+    .sort((a, b) => b.qty - a.qty);
+
+  if (models.length === 0) {
+    toast(`${month} 沒有缺 BOM 的機種`, 'success');
+    return;
+  }
+
+  const ok = await uiConfirm(
+    `${month} 有 ${models.length} 個機種缺 BOM（沒有 BOM ${models.filter(m => m.reason === 'no-bom').length} 個、BOM 沒填部品 ${models.filter(m => m.reason === 'empty-bom').length} 個）。\n\n送出後，機器人會請班長在 LINE 填寫。`,
+    { title: '送出缺 BOM 清單', okText: '送出' }
+  );
+  if (!ok) return;
+
+  try {
+    const result = await botFetch('/k1-bom-request', {
+      method: 'POST',
+      body: JSON.stringify({ month, partTypes: PART_TYPES, models })
+    });
+    toast(`已送出 ${result.count ?? models.length} 個機種給機器人`, 'success');
+  } catch (error) {
+    toast(describeBotError(error), 'error');
+  }
+} // sendMissingBOMList 結束
+
+function updateInboxBadge() {
+  const badge = document.getElementById('inbox-badge');
+  if (!badge) return;
+
+  const count = Object.values(loadLineInbox()).filter(item => item.status === 'pending').length;
+  badge.textContent = count;
+  badge.hidden = count === 0;
+} // updateInboxBadge 結束
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value || '');
+  return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+} // formatDateTime 結束
+
+function renderLineInbox(errorMessage = '') {
+  updateInboxBadge();
+
+  const listEl = document.getElementById('line-inbox-list');
+  if (!listEl) return;
+
+  const settings = loadLineBotSettings();
+  const items = Object.values(loadLineInbox());
+  const pending = items
+    .filter(item => item.status === 'pending')
+    .sort((a, b) => String(a.submittedAt).localeCompare(String(b.submittedAt)));
+  const done = items
+    .filter(item => item.status !== 'pending')
+    .sort((a, b) => String(b.reviewedAt).localeCompare(String(a.reviewedAt)))
+    .slice(0, 30);
+
+  // 連線狀態
+  const statusEl = document.getElementById('line-inbox-status');
+  statusEl.innerHTML = errorMessage
+    ? `<span class="pill pill-danger"><span class="dot"></span>${esc(errorMessage)}</span>`
+    : settings.url
+      ? `<span class="pill pill-ok"><span class="dot"></span>已設定機器人</span>
+         <span class="muted">審核專員：${esc(settings.reviewer || '尚未設定')}　上次同步：${settings.lastSync ? formatDateTime(settings.lastSync) : '尚未同步'}</span>`
+      : `<span class="pill pill-warn"><span class="dot"></span>尚未設定機器人網址</span>
+         <span class="muted">先按「設定」填網址；沒有開 Docker 時可以用「從檔案匯入」測試</span>`;
+
+  document.getElementById('line-inbox-summary').textContent =
+    `待審核 ${pending.length} 筆｜已處理 ${items.length - pending.length} 筆`;
+
+  document.getElementById('line-inbox-empty').style.display = pending.length ? 'none' : 'flex';
+
+  const pendingQty = {};
+  loadPending().forEach(p => { pendingQty[normalizeModelCode(p.model)] = p.qty; });
+
+  const changeLabel = {
+    add: '<span class="pill pill-ok">新增</span>',
+    change: '<span class="pill pill-warn">變更</span>',
+    same: '<span class="pill">相同</span>',
+    keep: '<span class="pill">未填・保留</span>'
+  };
+
+  listEl.innerHTML = pending.map(item => {
+    const cmp = compareInboxItem(item);
+    const qty = pendingQty[normalizeModelCode(item.model)];
+
+    const tags = [
+      item.noMachining ? '<span class="pill pill-accent">不需加工</span>' : '',
+      cmp.current ? '<span class="pill">更新既有 BOM</span>' : '<span class="pill pill-warn">BOM 沒有此機種</span>',
+      qty ? `<span class="pill">待建立 ${qty.toLocaleString()} 台</span>` : '',
+      item.source === 'file' ? '<span class="pill">檔案匯入</span>' : ''
+    ].join('');
+
+    const table = item.noMachining
+      ? `<p class="card-sub">班長確認這個機種不需要加工${cmp.filledCount ? `（另填了 ${cmp.filledCount} 個件號，確認後會略過）` : ''}。</p>`
+      : `
+        <div class="table-wrap">
+          <table class="data-table compact">
+            <thead><tr><th>部品種類</th><th>目前 BOM</th><th>班長填寫</th><th></th><th>提醒</th></tr></thead>
+            <tbody>
+              ${cmp.rows.map(row => `
+                <tr>
+                  <td class="mono">${esc(row.type)}</td>
+                  <td>${row.before ? `<span class="part-code">${esc(row.before)}</span>` : '<span class="muted">—</span>'}</td>
+                  <td>${row.after ? `<span class="part-code">${esc(row.after)}</span>` : '<span class="muted">—</span>'}</td>
+                  <td>${changeLabel[row.change] || ''}</td>
+                  <td class="muted">${row.warnings.map(esc).join('；')}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+
+    return `
+      <article class="card inbox-item">
+        <div class="card-head">
+          <div>
+            <h3 class="card-title"><span class="model-code">${esc(item.model)}</span>${tags}</h3>
+            <p class="card-sub">${esc(item.submittedBy)} 於 ${formatDateTime(item.submittedAt)} 送出${item.note ? `｜備註：${esc(item.note)}` : ''}</p>
+          </div>
+          <div class="toolbar">
+            <button class="btn btn-danger-ghost btn-sm" onclick="rejectInboxItem('${jsArg(item.id)}')">${icon('x')}退回</button>
+            <button class="btn btn-primary btn-sm" onclick="approveInboxItem('${jsArg(item.id)}')">${icon('check')}確認加入</button>
+          </div>
+        </div>
+        ${cmp.unknownTypes.length ? `<p class="inbox-warn">${icon('alert')}${esc(cmp.unknownTypes.join('、'))} 不是 BOM 欄位，確認時會略過</p>` : ''}
+        <div class="inbox-body">${table}</div>
+      </article>`;
+  }).join('');
+
+  // 已處理紀錄
+  document.getElementById('line-inbox-history').innerHTML = done.length
+    ? `<table class="data-table compact">
+        <thead><tr><th>機種</th><th>結果</th><th>填寫</th><th>審核</th><th>原因</th><th>通知班長</th></tr></thead>
+        <tbody>${done.map(item => `
+          <tr>
+            <td><span class="part-code">${esc(item.model)}</span></td>
+            <td>${item.status === 'approved'
+              ? `<span class="pill pill-ok">${item.noMachining ? '不需加工' : '已加入'}</span>`
+              : '<span class="pill pill-danger">退回</span>'}</td>
+            <td>${esc(item.submittedBy)}<br><span class="muted">${formatDateTime(item.submittedAt)}</span></td>
+            <td>${esc(item.reviewer || '')}<br><span class="muted">${formatDateTime(item.reviewedAt)}</span></td>
+            <td>${esc(item.reason || '')}</td>
+            <td>${item.source !== 'bot' ? '<span class="muted">不需要</span>' : item.reported ? '已通知' : '<span class="pill pill-warn">待通知</span>'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`
+    : '<p class="card-sub" style="padding:0 20px 16px">還沒有處理過的資料</p>';
+} // renderLineInbox 結束
 
 function exportLineLoad() {
   const data = calculateLineLoad();
@@ -3245,6 +3870,9 @@ function toast(msg, type = 'success') {
   el.innerHTML = icon(type === 'success' ? 'check' : 'alert') + `<span>${esc(msg)}</span>`;
   container.appendChild(el);
 
+  // 最多同時顯示 4 則，舊的先收掉
+  while (container.children.length > 4) container.firstElementChild.remove();
+
   setTimeout(() => {
     el.classList.add('leaving');
     el.addEventListener('animationend', () => el.remove(), { once: true });
@@ -3403,6 +4031,8 @@ function getCommands() {
     ...tabs,
     { group: '動作', label: '匯入組車計畫 Excel', icon: 'upload', hint: '生產計畫', run: pickFile('production', 'excel-file') },
     { group: '動作', label: '轉出加工線負荷 Excel', icon: 'download', hint: '加工線負荷', run: () => exportLineLoad() },
+    { group: '動作', label: '轉出部品日需求 Excel', icon: 'download', hint: '每日部品計畫', run: () => exportDailyDemand() },
+    { group: '動作', label: '同步 LINE 收件匣', icon: 'inbox', hint: 'LINE 收件匣', run: () => { switchTab('line-inbox'); syncLineInbox(); } },
     { group: '動作', label: '新增機種 BOM', icon: 'plus', hint: 'BOM 管理', run: () => { switchTab('bom'); openAddModal(); } },
     { group: '動作', label: 'BOM 主檔轉入', icon: 'upload', hint: 'BOM 管理', run: pickFile('bom', 'bom-excel-file') },
     { group: '動作', label: '加工部品主檔轉入', icon: 'upload', hint: '加工部品主檔', run: pickFile('part-lines', 'part-master-excel-file') },
@@ -3755,6 +4385,8 @@ renderPlan();
 renderPending();
 refreshPlanSelect();
 document.getElementById('bom-search-input')?.addEventListener('input', renderBOM);
+
+updateInboxBadge();
 
 // 開啟上次停留的頁面
 (function restoreLastTab() {
